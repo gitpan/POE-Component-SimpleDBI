@@ -6,7 +6,7 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-our $VERSION = '1.03';
+our $VERSION = '1.04';
 
 # Use Error.pm's try/catch semantics
 use Error qw( :try );
@@ -187,7 +187,7 @@ sub DB_MULTIPLE {
 	# Check if this is a non-select statement
 	if ( $data->{'SQL'} !~ /^SELECT/i ) {
 		# User is not a SQL whiz, obviously ;)
-		$output = Make_Error( $data->{'ID'}, "DB_MULTIPLE Is for SELECT queries only! ( $data->{'SQL'} )" );
+		$output = Make_Error( $data->{'ID'}, "DB_MULTIPLE is for SELECT queries only! ( $data->{'SQL'} )" );
 		return $output;
 	}
 
@@ -283,7 +283,7 @@ sub DB_SINGLE {
 	# Check if this is a non-select statement
 	if ( $data->{'SQL'} !~ /^SELECT/i ) {
 		# User is not a SQL whiz, obviously ;)
-		$output = Make_Error( $data->{'ID'}, "DB_SINGLE Is for SELECT queries only! ( $data->{'SQL'} )" );
+		$output = Make_Error( $data->{'ID'}, "DB_SINGLE is for SELECT queries only! ( $data->{'SQL'} )" );
 		return $output;
 	}
 
@@ -370,7 +370,7 @@ sub DB_DO {
 	# Check if this is a non-select statement
 	if ( $data->{'SQL'} =~ /^SELECT/i ) {
 		# User is not a SQL whiz, obviously ;)
-		$output = Make_Error( $data->{'ID'}, "DB_DO Is for non-SELECT queries only! ( $data->{'SQL'} )" );
+		$output = Make_Error( $data->{'ID'}, "DB_DO is for non-SELECT queries only! ( $data->{'SQL'} )" );
 		return $output;
 	}
 
@@ -386,7 +386,7 @@ sub DB_DO {
 		} else {
 			# Execute the query
 			try {
-				$rows_affected = $sth->execute( $data->{'PLACEHOLDERS'} );
+				$rows_affected = $sth->execute( @{ $data->{'PLACEHOLDERS'} } );
 			} catch Error with {
 				die $sth->errstr;
 			};

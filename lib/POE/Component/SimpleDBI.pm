@@ -6,7 +6,7 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-our $VERSION = '1.06';
+our $VERSION = '1.07';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -162,6 +162,11 @@ sub new {
 
 # This subroutine handles shutdown signals
 sub Shutdown {
+	# Extensive debugging...
+	if ( DEBUG ) {
+		warn 'Initiating shutdown procedure!';
+	}
+
 	# Check for duplicate shutdown signals
 	if ( $_[HEAP]->{'SHUTDOWN'} ) {
 		# Okay, let's see what's going on
@@ -253,6 +258,11 @@ sub DB_HANDLE {
 
 		# Check for SQL
 		if ( ! exists $args{'SQL'} ) {
+			# Extensive debug
+			if ( DEBUG ) {
+				warn 'Did not receive a SQL key!';
+			}
+
 			# Okay, send the error to the Event
 			$_[KERNEL]->post( $args{'SESSION'}, $args{'EVENT'}, {
 				'SQL'		=>	undef,
@@ -264,6 +274,11 @@ sub DB_HANDLE {
 			return;
 		} else {
 			if ( ref( $args{'SQL'} ) ) {
+				# Extensive debug
+				if ( DEBUG ) {
+					warn 'SQL key was a reference!';
+				}
+
 				# Okay, send the error to the Event
 				$_[KERNEL]->post( $args{'SESSION'}, $args{'EVENT'}, {
 					'SQL'		=>	undef,
@@ -282,6 +297,11 @@ sub DB_HANDLE {
 			$args{'PLACEHOLDERS'} = [];
 		} else {
 			if ( ref( $args{'PLACEHOLDERS'} ) ne 'ARRAY' ) {
+				# Extensive debug
+				if ( DEBUG ) {
+					warn 'PLACEHOLDERS was not a ref to an ARRAY!';
+				}
+
 				# Okay, send the error to the Event
 				$_[KERNEL]->post( $args{'SESSION'}, $args{'EVENT'}, {
 					'SQL'		=>	$args{'SQL'},
@@ -302,6 +322,11 @@ sub DB_HANDLE {
 
 		# Check if we have shutdown or not
 		if ( $_[HEAP]->{'SHUTDOWN'} ) {
+			# Extensive debug
+			if ( DEBUG ) {
+				warn 'Denied query due to SHUTDOWN';
+			}
+
 			# Do not accept this query
 			$_[KERNEL]->post( $args{'SESSION'}, $args{'EVENT'}, {
 				'SQL'		=>	$args{'SQL'},
@@ -337,16 +362,26 @@ sub DB_HANDLE {
 
 # This subroutine does the meat - sends queries to the subprocess
 sub Check_Queue {
+	# Extensive debug
+	if ( DEBUG ) {
+		warn 'Checking the queue for events to process';
+	}
+
 	# Check if the subprocess is currently active
 	if ( ! $_[HEAP]->{'ACTIVE'} ) {
 		# Check if we have a query in the queue
 		if ( scalar( @{ $_[HEAP]->{'QUEUE'} } ) > 0 ) {
+			# Extensive debug
+			if ( DEBUG ) {
+				warn 'Sending one query to the SubProcess';
+			}
+
 			# Copy what we need from the top of the queue
 			my %queue;
-			$queue{'ID'} = @{ $_[HEAP]->{'QUEUE'} }[0]->{'ID'};
-			$queue{'SQL'} = @{ $_[HEAP]->{'QUEUE'} }[0]->{'SQL'};
-			$queue{'ACTION'} = @{ $_[HEAP]->{'QUEUE'} }[0]->{'ACTION'};
-			$queue{'PLACEHOLDERS'} = @{ $_[HEAP]->{'QUEUE'} }[0]->{'PLACEHOLDERS'};
+			$queue{'ID'} = $_[HEAP]->{'QUEUE'}->[0]->{'ID'};
+			$queue{'SQL'} = $_[HEAP]->{'QUEUE'}->[0]->{'SQL'};
+			$queue{'ACTION'} = $_[HEAP]->{'QUEUE'}->[0]->{'ACTION'};
+			$queue{'PLACEHOLDERS'} = $_[HEAP]->{'QUEUE'}->[0]->{'PLACEHOLDERS'};
 
 			# Set the child to 'active'
 			$_[HEAP]->{'ACTIVE'} = 1;
@@ -374,6 +409,11 @@ sub Delete_Query {
 	# Check if the id exists + not at the top of the queue :)
 	if ( defined @{ $_[HEAP]->{'QUEUE'} }[0] ) {
 		if ( @{ $_[HEAP]->{'QUEUE'} }[0]->{'ID'} eq $id ) {
+			# Extensive debug
+			if ( DEBUG ) {
+				warn 'Could not delete query as it is being processed by the SubProcess!';
+			}
+
 			# Query is still active, nothing we can do...
 			return undef;
 		} else {
@@ -396,6 +436,11 @@ sub Delete_Query {
 
 # This starts the SimpleDBI
 sub Start {
+	# Extensive debug
+	if ( DEBUG ) {
+		warn 'Starting up SimpleDBI!';
+	}
+
 	# Set up the alias for ourself
 	$_[KERNEL]->alias_set( $_[HEAP]->{'ALIAS'} );
 
@@ -405,6 +450,11 @@ sub Start {
 
 # This sets up the WHEEL
 sub Setup_Wheel {
+	# Extensive debug
+	if ( DEBUG ) {
+		warn 'Attempting creation of SubProcess wheel now...';
+	}
+
 	# Are we shutting down?
 	if ( $_[HEAP]->{'SHUTDOWN'} ) {
 		# Do not re-create the wheel...
@@ -501,7 +551,7 @@ sub Got_STDOUT {
 		$_[KERNEL]->call( $_[SESSION], 'shutdown', 'NOW' );
 
 		# Too bad that we have to die...
-		croak( "Could not connect to DBI: $_[ARG0]->{'ERROR'}" );
+		die( "Could not connect to the DataBase: $_[ARG0]->{'ERROR'}" );
 	}
 
 	# Check to see if the ID matches with the top of the queue
@@ -702,6 +752,18 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 
 =head1 CHANGES
 
+=head2 1.06 -> 1.07
+
+	In the SubProcess, fixed a silly mistake in DO's execution of placeholders
+
+	Cleaned up a few error messages in the SubProcess
+
+	Peppered the code with *more* DEBUG statements :)
+
+	Replaced a croak() with a die() when it couldn't connect to the database
+
+	Documented the _child events
+
 =head2 1.05 -> 1.06
 
 	Fixed some typos in the POD
@@ -778,7 +840,10 @@ To start SimpleDBI, just call it's new method:
 This method will die on error or return success.
 
 NOTE: If the SubProcess could not connect to the DB, it will return
-an error, causing SimpleDBI to croak.
+an error, causing SimpleDBI to die.
+
+NOTE: The act of starting/stopping SimpleDBI fires off _child events, read
+the POE documentation on what to do with them :)
 
 This constructor accepts only 4 different options.
 
@@ -847,7 +912,7 @@ They all share a common argument format, except for the shutdown and Delete_Quer
 
 =item C<DO>
 
-	This query is specialized for those queries where you UPDATE/DELETE/etc.
+	This query is specialized for those queries where you UPDATE/DELETE/INSERT/etc.
 
 	THIS IS NOT FOR SELECT QUERIES!
 

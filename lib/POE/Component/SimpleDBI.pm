@@ -6,7 +6,7 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-our $VERSION = '1.04';
+our $VERSION = '1.05';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -21,9 +21,18 @@ use POE::Component::SimpleDBI::SubProcess;
 # Other miscellaneous modules we need
 use Carp;
 
-# Our own definition of the max retries
-sub MAX_RETRIES () { 5 }
-sub DEBUG () { 0 }
+# Set some constants
+BEGIN {
+	# Debug fun!
+	if ( ! defined &DEBUG ) {
+		eval "sub DEBUG () { 0 }";
+	}
+
+	# Our own definition of the max retries
+	if ( ! defined &MAX_RETRIES ) {
+		eval "sub MAX_RETRIES () { 5 }";
+	}
+}
 
 # Autoflush to avoid weirdness
 $|++;
@@ -680,7 +689,13 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 
 =head1 CHANGES
 
-=head2 1.3 -> 1.4
+=head2 1.04 -> 1.05
+
+	Fixed some typos in the POD
+
+	Fixed the DEBUG + MAX_RETRIES "Subroutine redefined" foolishness
+
+=head2 1.03 -> 1.04
 
 	Got rid of the EVENT_S and EVENT_E handlers, replaced with a single EVENT handler
 
@@ -698,7 +713,7 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 
 	Fixed some typos in the POD
 
-=head2 1.2 -> 1.3
+=head2 1.02 -> 1.03
 
 	Increments refcount for querying sessions so they don't go away
 

@@ -1,4 +1,4 @@
-POE/Component/SimpleDBI version 1.04
+POE/Component/SimpleDBI version 1.05
 ====================================
 
 This module simplifies DBI usage in POE's multitasking world.

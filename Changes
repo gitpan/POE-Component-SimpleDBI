@@ -24,3 +24,8 @@ Revision history for Perl extension POE::Component::SimpleDBI.
 	Added some DEBUG stuff :)
 	Added the CHANGES section
 	Fixed some typos in the POD
+
+1.05 Thr Nov 20 17:29:28 2003
+
+	Fixed some typos in the POD
+	Fixed the DEBUG + MAX_RETRIES redefine stuff

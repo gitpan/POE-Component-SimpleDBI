@@ -6,7 +6,7 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-our $VERSION = do { my @r = (q$Revision: 1.3 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+our $VERSION = '1.04';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -87,7 +87,9 @@ sub new {
 
 	# Anything left over is unrecognized
 	if ( keys %opt > 0 ) {
-		croak( 'Unrecognized options were present in POE::Component::SimpleDBI->new!' );
+		if ( DEBUG ) {
+			croak 'Unrecognized options were present in POE::Component::SimpleDBI->new -> ' . join( ', ', keys %opt );
+		}
 	}
 
 	# Create a new session for ourself
@@ -107,17 +109,17 @@ sub new {
 			'ChildClosed'	=>	\&ChildClosed,
 			'Got_STDOUT'	=>	\&Got_STDOUT,
 			'Got_STDERR'	=>	\&Got_STDERR,
-			'SendWheel'	=>	\&SendWheel,
 
 			# DB events
 			'DO'		=>	\&DB_HANDLE,
 			'SINGLE'	=>	\&DB_HANDLE,
 			'MULTIPLE'	=>	\&DB_HANDLE,
 			'QUOTE'		=>	\&DB_HANDLE,
+			'_KILL'		=>	\&DB_HANDLE,
 
 			# Queue stuff
-			'Send_Query'	=>	\&Send_Query,
 			'Check_Queue'	=>	\&Check_Queue,
+			'Delete_Query'	=>	\&Delete_Query,
 		},
 
 		# Set up the heap for ourself
@@ -156,9 +158,15 @@ sub Shutdown {
 		# Okay, let's see what's going on
 		if ( $_[HEAP]->{'SHUTDOWN'} == 1 && ! defined $_[ARG0] ) {
 			# Duplicate shutdown events
+			if ( DEBUG ) {
+				warn 'Duplicate shutdown event was posted to SimpleDBI!';
+			}
 			return;
 		} elsif ( $_[HEAP]->{'SHUTDOWN'} == 2 ) {
 			# Tried to shutdown_NOW again...
+			if ( DEBUG ) {
+				warn 'Duplicate shutdown_NOW event was posted to SimpleDBI!';
+			}
 			return;
 		}
 	} else {
@@ -183,10 +191,11 @@ sub Shutdown {
 			if ( $queue->{'ACTION'} eq 'EXIT' ) { next }
 
 			# Post a failure event to all the queries on the Queue, informing them that we have been shutdown...
-			$_[KERNEL]->post( $queue->{'SESSION'}, $queue->{'EVENT_E'}, {
+			$_[KERNEL]->post( $queue->{'SESSION'}, $queue->{'EVENT'}, {
 				'SQL'		=>	$queue->{'SQL'},
 				'PLACEHOLDERS'	=>	$queue->{'PLACEHOLDERS'},
 				'ERROR'		=>	'POE::Component::SimpleDBI was shut down forcibly!',
+				'ACTION'	=>	$queue->{'ACTION'},
 				},
 			);
 
@@ -201,139 +210,114 @@ sub Shutdown {
 		$_[HEAP]->{'SHUTDOWN'} = 1;
 
 		# Put into the queue EXIT for the child
-		$_[KERNEL]->yield( 'Send_Query', {
-			'ACTION'	=>	'EXIT',
-			'SQL'		=>	undef,
-			'PLACEHOLDERS'	=>	undef,
-			}
-		);
+		$_[KERNEL]->yield( '_KILL' );
 	}
 }
 
-# This subroutine handles MULTIPLE + SINGLE + DO queries
+# This subroutine handles MULTIPLE + SINGLE + DO + QUOTE queries
 sub DB_HANDLE {
 	# Get the arguments
 	my %args = @_[ARG0 .. $#_ ];
 
-	# Add some stuff to the args
-	$args{'SESSION'} = $_[SENDER]->ID();
-	$args{'ACTION'} = $_[STATE];
+	# Check if we got the special KILL query
+	if ( $_[STATE] ne '_KILL' ) {
+		# Add some stuff to the args
+		$args{'SESSION'} = $_[SENDER]->ID();
+		$args{'ACTION'} = $_[STATE];
 
-	# Check for the Failure Event
-	if ( ! exists $args{'EVENT_E'} ) {
-		# Nothing much we can do except drop this quietly...
-		warn "Did not receive an EVENT_E argument from caller " . $_[SESSION]->ID . " -> State: " . $_[STATE] . " Args: " . %args;
-		return;
-	} else {
-		if ( ref( $args{'EVENT_E'} ne 'SCALAR' ) ) {
-			# Same quietness...
-			warn "Received an malformed EVENT_E argument from caller " . $_[SESSION]->ID . " -> State: " . $_[STATE] . " Args: " . %args;
-			return;
-		}
-	}
-
-	# Check for the Success Event
-	if ( ! exists $args{'EVENT_S'} ) {
-		# Okay, send the error to the Failure Event
-		$_[KERNEL]->post( $args{'SESSION'}, $args{'EVENT_E'}, {
-			'SQL'		=>	undef,
-			'PLACEHOLDERS'	=>	undef,
-			'ERROR'		=>	'EVENT_S is not defined!',
+		# Check for Event
+		if ( ! exists $args{'EVENT'} ) {
+			# Nothing much we can do except drop this quietly...
+			if ( DEBUG ) {
+				warn "Did not receive an EVENT argument from caller " . $_[SESSION]->ID . " -> State: " . $_[STATE] . " Args: " . %args;
 			}
-		);
-		return;
-	} else {
-		if ( ref( $args{'EVENT_S'} ) ) {
-			# Okay, send the error to the Failure Event
-			$_[KERNEL]->post( $args{'SESSION'}, $args{'EVENT_E'}, {
+			return;
+		} else {
+			if ( ref( $args{'EVENT'} ne 'SCALAR' ) ) {
+				# Same quietness...
+				if ( DEBUG ) {
+					warn "Received an malformed EVENT argument from caller " . $_[SESSION]->ID . " -> State: " . $_[STATE] . " Args: " . %args;
+				}
+				return;
+			}
+		}
+
+		# Check for SQL
+		if ( ! exists $args{'SQL'} ) {
+			# Okay, send the error to the Event
+			$_[KERNEL]->post( $args{'SESSION'}, $args{'EVENT'}, {
 				'SQL'		=>	undef,
 				'PLACEHOLDERS'	=>	undef,
-				'ERROR'		=>	'EVENT_S is not a scalar!',
+				'ERROR'		=>	'SQL is not defined!',
+				'ACTION'	=>	$args{'ACTION'},
 				}
 			);
 			return;
-		}
-	}
-
-	# Check for SQL
-	if ( ! exists $args{'SQL'} ) {
-		# Okay, send the error to the Failure Event
-		$_[KERNEL]->post( $args{'SESSION'}, $args{'EVENT_E'}, {
-			'SQL'		=>	undef,
-			'PLACEHOLDERS'	=>	undef,
-			'ERROR'		=>	'SQL is not defined!',
+		} else {
+			if ( ref( $args{'SQL'} ) ) {
+				# Okay, send the error to the Event
+				$_[KERNEL]->post( $args{'SESSION'}, $args{'EVENT'}, {
+					'SQL'		=>	undef,
+					'PLACEHOLDERS'	=>	undef,
+					'ERROR'		=>	'SQL is not a scalar!',
+					'ACTION'	=>	$args{'ACTION'},
+					}
+				);
+				return;
 			}
-		);
-		return;
-	} else {
-		if ( ref( $args{'SQL'} ) ) {
-			# Okay, send the error to the Failure Event
-			$_[KERNEL]->post( $args{'SESSION'}, $args{'EVENT_E'}, {
-				'SQL'		=>	undef,
-				'PLACEHOLDERS'	=>	undef,
-				'ERROR'		=>	'SQL is not a scalar!',
-				}
-			);
-			return;
 		}
-	}
 
-	# Check for placeholders
-	if ( ! exists $args{'PLACEHOLDERS'} ) {
-		# Create our own empty placeholders
-		$args{'PLACEHOLDERS'} = [];
-	} else {
-		if ( ref( $args{'PLACEHOLDERS'} ) ne 'ARRAY' ) {
-			# Okay, send the error to the Failure Event
-			$_[KERNEL]->post( $args{'SESSION'}, $args{'EVENT_E'}, {
+		# Check for placeholders
+		if ( ! exists $args{'PLACEHOLDERS'} ) {
+			# Create our own empty placeholders
+			$args{'PLACEHOLDERS'} = [];
+		} else {
+			if ( ref( $args{'PLACEHOLDERS'} ) ne 'ARRAY' ) {
+				# Okay, send the error to the Event
+				$_[KERNEL]->post( $args{'SESSION'}, $args{'EVENT'}, {
+					'SQL'		=>	$args{'SQL'},
+					'PLACEHOLDERS'	=>	undef,
+					'ERROR'		=>	'PLACEHOLDERS is not an array!',
+					'ACTION'	=>	$args{'ACTION'},
+					}
+				);
+				return;
+			}
+		}
+
+		# Check if we have shutdown or not
+		if ( $_[HEAP]->{'SHUTDOWN'} ) {
+			# Do not accept this query
+			$_[KERNEL]->post( $args{'SESSION'}, $args{'EVENT'}, {
 				'SQL'		=>	$args{'SQL'},
-				'PLACEHOLDERS'	=>	undef,
-				'ERROR'		=>	'PLACEHOLDERS is not an array!',
+				'PLACEHOLDERS'	=>	$args{'PLACEHOLDERS'},
+				'ERROR'		=>	'POE::Component::SimpleDBI is shutting down now, requests are not accepted!',
+				'ACTION'	=>	$args{'ACTION'},
 				}
 			);
 			return;
 		}
-	}
 
-	# Check if we have shutdown or not
-	if ( $_[HEAP]->{'SHUTDOWN'} ) {
-		# Do not accept this query
-		$_[KERNEL]->post( $args{'SESSION'}, $args{'EVENT_E'}, {
-			'SQL'		=>	$args{'SQL'},
-			'PLACEHOLDERS'	=>	$args{'PLACEHOLDERS'},
-			'ERROR'		=>	'POE::Component::SimpleDBI is shutting down now, requests are not accepted!',
-			}
-		);
-		return;
-	}
-
-	# Increment the refcount for the session that is sending us this query
-	$_[KERNEL]->refcount_increment( $_[SENDER]->ID(), 'SimpleDBI' );
-
-	# Okay, fire off this query!
-	$_[KERNEL]->yield( 'Send_Query', \%args );
-}
-
-# This subroutine starts the process of sending a query
-sub Send_Query {
-	# Validate that we have something
-	if ( ! defined $_[ARG0] ) {
-		return;
+		# Increment the refcount for the session that is sending us this query
+		$_[KERNEL]->refcount_increment( $_[SENDER]->ID(), 'SimpleDBI' );
 	} else {
-		# Must be hash
-		if ( ref( $_[ARG0] ) ne 'HASH' ) {
-			return;
-		}
+		# Prepare a KILL query :)
+		$args{'ACTION'} = 'EXIT';
+		$args{'SQL'} = undef;
+		$args{'PLACEHOLDERS'} = undef;
 	}
 
 	# Add the ID to the query
-	$_[ARG0]->{'ID'} = $_[HEAP]->{'IDCounter'}++;
+	$args{'ID'} = $_[HEAP]->{'IDCounter'}++;
 
 	# Add this query to the queue
-	push( @{ $_[HEAP]->{'QUEUE'} }, $_[ARG0] );
+	push( @{ $_[HEAP]->{'QUEUE'} }, \%args );
 
 	# Send the query!
 	$_[KERNEL]->call( $_[SESSION], 'Check_Queue' );
+
+	# Return the ID for interested parties :)
+	return $args{'ID'};
 }
 
 # This subroutine does the meat - sends queries to the subprocess
@@ -349,10 +333,50 @@ sub Check_Queue {
 			$queue{'ACTION'} = @{ $_[HEAP]->{'QUEUE'} }[0]->{'ACTION'};
 			$queue{'PLACEHOLDERS'} = @{ $_[HEAP]->{'QUEUE'} }[0]->{'PLACEHOLDERS'};
 
-			# Fire off something!
-			$_[KERNEL]->call( $_[SESSION], 'SendWheel', \%queue );
+			# Set the child to 'active'
+			$_[HEAP]->{'ACTIVE'} = 1;
+
+			# Put it in the wheel
+			$_[HEAP]->{'WHEEL'}->put( \%queue );
 		}
 	}
+}
+
+# This subroutine deletes a query from the queue
+sub Delete_Query {
+	# ARG0 = ID
+	my $id = $_[ARG0];
+
+	# Validation
+	if ( ! defined $id ) {
+		# Debugging
+		if ( DEBUG ) {
+			warn 'Got a Delete_Query event with no arguments!';
+		}
+		return;
+	}
+
+	# Check if the id exists + not at the top of the queue :)
+	if ( defined @{ $_[HEAP]->{'QUEUE'} }[0] ) {
+		if ( @{ $_[HEAP]->{'QUEUE'} }[0]->{'ID'} eq $id ) {
+			# Query is still active, nothing we can do...
+			return undef;
+		} else {
+			# Search through the rest of the queue and see what we get
+			foreach my $count ( @{ $_[HEAP]->{'QUEUE'} } ) {
+				if ( $_[HEAP]->{'QUEUE'}->[ $count ]->{'ID'} eq $id ) {
+					# Found a match, delete it!
+					splice( @{ $_[HEAP]->{'QUEUE'} }, $count, 1 );
+
+					# Return success
+					return 1;
+				}
+			}
+		}
+	}
+
+	# If we got here, we didn't find anything
+	return undef;
 }
 
 # This starts the SimpleDBI
@@ -424,18 +448,6 @@ sub Stop {
 	# Hmpf, what should I put in here?
 }
 
-# Handles sending all output to the child process
-sub SendWheel {
-	# Send data only if we are not shutting down...
-	if ( $_[HEAP]->{'SHUTDOWN'} != 2 ) {
-		# Set the child to 'active'
-		$_[HEAP]->{'ACTIVE'} = 1;
-
-		# Put it in the wheel
-		$_[HEAP]->{'WHEEL'}->put( $_[ARG0] );
-	}
-}
-
 # Handles child DIE'ing
 sub ChildClosed {
 	# Emit debugging information
@@ -488,15 +500,16 @@ sub Got_STDOUT {
 	# See if this is an error
 	if ( exists $_[ARG0]->{'ERROR'} ) {
 		# Send this to the Error handler
-		$_[KERNEL]->post( $query->{'SESSION'}, $query->{'EVENT_E'}, {
+		$_[KERNEL]->post( $query->{'SESSION'}, $query->{'EVENT'}, {
 			'SQL'		=>	$query->{'SQL'},
 			'PLACEHOLDERS'	=>	$query->{'PLACEHOLDERS'},
 			'ERROR'		=>	$_[ARG0]->{'ERROR'},
+			'ACTION'	=>	$query->{'ACTION'},
 			}
 		);
 	} else {
 		# Send the data to the appropriate place
-		$_[KERNEL]->post( $query->{'SESSION'}, $query->{'EVENT_S'}, {
+		$_[KERNEL]->post( $query->{'SESSION'}, $query->{'EVENT'}, {
 			'SQL'		=>	$query->{'SQL'},
 			'PLACEHOLDERS'	=>	$query->{'PLACEHOLDERS'},
 			'RESULT'	=>	$_[ARG0]->{'DATA'},
@@ -552,28 +565,27 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 				$_[KERNEL]->post( 'SimpleDBI', 'DO',
 					SQL => 'DELETE FROM FooTable WHERE ID = ?',
 					PLACEHOLDERS => [ qw( 38 ) ],
-					EVENT_S => 'deleted_handler',
-					EVENT_E => 'error_handler',
+					EVENT => 'deleted_handler',
 				);
 
 				$_[KERNEL]->post( 'SimpleDBI', 'SINGLE',
 					SQL => 'Select * from FooTable',
-					EVENT_S => 'success_handler',
-					EVENT_E => 'error_handler',
+					EVENT => 'success_handler',
 				);
 
-				$_[KERNEL]->post( 'SimpleDBI', 'MULTIPLE',
+				my $id = $_[KERNEL]->call( 'SimpleDBI', 'MULTIPLE',
 					SQL => 'SELECT foo, baz FROM FooTable2 WHERE id = ?',
-					EVENT_S => 'multiple_handler',
-					EVENT_E => 'error_handler',
+					EVENT => 'multiple_handler',
 					PLACEHOLDERS => [ qw( 53 ) ],
 				);
 
 				$_[KERNEL]->post( 'SimpleDBI', 'QUOTE',
 					SQL => 'foo$*@%%sdkf"""',
-					EVENT_S => 'quote_handler',
-					EVENT_E => 'error_handler',
+					EVENT => 'quote_handler',
 				);
+
+				# Changed our mind!
+				$_[KERNEL]->post( 'SimpleDBI', 'Delete_Query', $id );
 
 				# 3 ways to shutdown
 
@@ -592,7 +604,6 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 			deleted_handler => \&deleted_handler,
 			quote_handler	=> \&quote_handler,
 			multiple_handler => \&multiple_handler,
-			error_handler => \&error_handler,
 		},
 	);
 
@@ -604,6 +615,10 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 		#	PLACEHOLDERS => The placeholders
 		#	ACTION => QUOTE
 		# }
+
+		if ( exists $_[ARG0]->{'ERROR'} ) {
+			# Handle error here
+		}
 	}
 
 	sub deleted_handler {
@@ -614,6 +629,10 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 		#	PLACEHOLDERS => The placeholders
 		#	ACTION => DO
 		# }
+
+		if ( exists $_[ARG0]->{'ERROR'} ) {
+			# Handle error here
+		}
 	}
 
 	sub success_handler {
@@ -624,6 +643,10 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 		#	PLACEHOLDERS => The placeholders
 		#	ACTION => SINGLE
 		# }
+
+		if ( exists $_[ARG0]->{'ERROR'} ) {
+			# Handle error here
+		}
 	}
 
 	sub multiple_handler {
@@ -634,15 +657,10 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 		#	PLACEHOLDERS => The placeholders
 		#	ACTION => MULTIPLE
 		# }
-	}
 
-	sub error_handler {
-		# Errors, we receive an scalar string
-		# $_[ARG0] = {
-		#	SQL => The SQL You put in
-		#	ERROR => ERRORSTRING
-		#	PLACEHOLDERS => The placeholders
-		# }
+		if ( exists $_[ARG0]->{'ERROR'} ) {
+			# Handle error here
+		}
 	}
 
 =head1 ABSTRACT
@@ -652,11 +670,49 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 	This module is a breeze to use, you'll have DBI calls in your POE program
 	up and running in only a few seconds of setup.
 
+	This module does what XML::Simple does for the XML world.
+
 	If you want more advanced usage, check out:
 		POE::Component::LaDBI
 
 	If you want even simpler usage, check out:
 		POE::Component::DBIAgent
+
+=head1 CHANGES
+
+=head2 1.3 -> 1.4
+
+	Got rid of the EVENT_S and EVENT_E handlers, replaced with a single EVENT handler
+
+	Internal changes to get rid of some stuff -> Send_Query / Send_Wheel
+
+	Added the Delete_Query event -> Deletes an query via ID
+
+	Changed the DO/MULTIPLE/SINGLE/QUOTE events to return an ID ( Only usable if call'ed )
+
+	Made sure that the ACTION key is sent back to the EVENT handler every time
+
+	Added some DEBUG stuff :)
+
+	Added the CHANGES section
+
+	Fixed some typos in the POD
+
+=head2 1.2 -> 1.3
+
+	Increments refcount for querying sessions so they don't go away
+
+	POD formatting
+
+	Consolidated shutdown and shutdown_NOW into one single event
+
+	General formatting in program
+
+	DB connection error handling
+
+	Renamed the result hash: RESULTS to RESULT for better readability
+
+	SubProcess -> added DBI connect failure handling
 
 =head1 DESCRIPTION
 
@@ -680,7 +736,7 @@ To start SimpleDBI, just call it's new method:
 
 	POE::Component::SimpleDBI->new(
 		'ALIAS'		=>	'DataBase',
-		'DSN'		=>	'floobarz',
+		'DSN'		=>	'DBI:mysql:database=foobaz;host=192.168.1.100;port=3306',
 		'USERNAME'	=>	'DBLogin',
 		'PASSWORD'	=>	'DBPass',
 	);
@@ -706,7 +762,7 @@ This is the DSN -> Database connection string
 SimpleDBI expects this to contain everything you need to connect to a database
 via DBI, sans the username and password.
 
-For valid DSN strings, contact your DBI manual.
+For valid DSN strings, consult your DBI manual.
 
 =item C<USERNAME>
 
@@ -720,8 +776,8 @@ Simply put, this is the DB password SimpleDBI will use.
 
 =head2 Events
 
-There is only a few events you can trigger in SimpleDBI.
-They all share a common argument format, except for the shutdown event.
+There is a few events you can trigger in SimpleDBI.
+They all share a common argument format, except for the shutdown and Delete_Query event.
 
 =over 4
 
@@ -737,15 +793,13 @@ They all share a common argument format, except for the shutdown event.
 
 	$_[KERNEL]->post( 'SimpleDBI', 'QUOTE',
 		SQL => 'foo$*@%%sdkf"""',
-		EVENT_S => 'quote_handler',
-		EVENT_E => 'error_handler',
+		EVENT => 'quote_handler',
 	);
 
-	The Success Event handler will get a hash in ARG0:
-	{
-		'SQL'		=>	Original SQL inputted
-		'RESULT'	=>	Quoted SQL
-	}
+	Note: It will return the internal query ID if you store the return value via call:
+	my $queryid = $_[KERNEL]->call( ... );
+
+	Look at Delete_Query for what you can do with the ID.
 
 =item C<DO>
 
@@ -764,16 +818,22 @@ They all share a common argument format, except for the shutdown event.
 	$_[KERNEL]->post( 'SimpleDBI', 'DO',
 		SQL => 'DELETE FROM FooTable WHERE ID = ?',
 		PLACEHOLDERS => [ qw( 38 ) ],
-		EVENT_S => 'deleted_handler',
-		EVENT_E => 'error_handler',
+		EVENT => 'deleted_handler',
 	);
 
-	The Success Event handler will get a hash in ARG0:
+	The Event handler will get a hash in ARG0:
 	{
 		'SQL'		=>	Original SQL inputted
 		'RESULT'	=>	Scalar value of rows affected
 		'PLACEHOLDERS'	=>	Original placeholders
+		'ACTION'	=>	'DO'
+		'ERROR'		=>	exists only if an error occured
 	}
+
+	Note: It will return the internal query ID if you store the return value via call:
+	my $queryid = $_[KERNEL]->call( ... );
+
+	Look at Delete_Query for what you can do with the ID.
 
 =item C<SINGLE>
 
@@ -784,8 +844,8 @@ They all share a common argument format, except for the shutdown event.
 	Internally, it does this:
 
 	$sth = $dbh->prepare_cached( $SQL );
-	$sth->bind_columns( %result );
 	$sth->execute( $PLACEHOLDERS );
+	$sth->bind_columns( %result );
 	$sth->fetch();
 	return %result;
 
@@ -793,16 +853,22 @@ They all share a common argument format, except for the shutdown event.
 
 	$_[KERNEL]->post( 'SimpleDBI', 'SINGLE',
 		SQL => 'Select * from FooTable',
-		EVENT_S => 'success_handler',
-		EVENT_E => 'error_handler',
+		EVENT => 'success_handler',
 	);
 
-	The Success Event handler will get a hash in ARG0:
+	The Event handler will get a hash in ARG0:
 	{
 		'SQL'		=>	Original SQL inputted
 		'RESULT'	=>	Hash of rows - similar to fetchrow_hashref
 		'PLACEHOLDERS'	=>	Original placeholders
+		'ACTION'	=>	'SINGLE'
+		'ERROR'		=>	exists only if an error occured
 	}
+
+	Note: It will return the internal query ID if you store the return value via call:
+	my $queryid = $_[KERNEL]->call( ... );
+
+	Look at Delete_Query for what you can do with the ID.
 
 =item C<MULTIPLE>
 
@@ -811,8 +877,8 @@ They all share a common argument format, except for the shutdown event.
 	Internally, it does this:
 
 	$sth = $dbh->prepare_cached( $SQL );
-	$sth->bind_columns( %row );
 	$sth->execute( $PLACEHOLDERS );
+	$sth->bind_columns( %row );
 	while ( $sth->fetch() ) {
 		push( @results, %row );
 	}
@@ -822,17 +888,39 @@ They all share a common argument format, except for the shutdown event.
 
 	$_[KERNEL]->post( 'SimpleDBI', 'MULTIPLE',
 		SQL => 'SELECT foo, baz FROM FooTable2 WHERE id = ?',
-		EVENT_S => 'multiple_handler',
-		EVENT_E => 'error_handler',
+		EVENT => 'multiple_handler',
 		PLACEHOLDERS => [ qw( 53 ) ],
 	);
 
-	The Success Event handler will get a hash in ARG0:
+	The Event handler will get a hash in ARG0:
 	{
 		'SQL'		=>	Original SQL inputted
 		'RESULT'	=>	Array of hash of rows ( array of fetchrow_hashref's )
 		'PLACEHOLDERS'	=>	Original placeholders
+		'ACTION'	=>	'MULTIPLE'
+		'ERROR'		=>	exists only if an error occured
+
 	}
+
+	Note: It will return the internal query ID if you store the return value via call:
+	my $queryid = $_[KERNEL]->call( ... );
+
+	Look at Delete_Query for what you can do with the ID.
+
+=item C<Delete_Query>
+
+	Call this event if you want to delete a query via the ID.
+
+	Returns:
+		undef if it wasn't able to find the ID
+		undef if the query is currently being processed
+		true if the query was successfully deleted
+
+	Here's an example on how to trigger this event:
+
+	$_[KERNEL]->post( 'SimpleDBI', 'Delete_Query', $queryID );
+
+	IF you really want to know the status, execute a call on the event and check the returned value.
 
 =item C<Shutdown>
 
@@ -878,17 +966,13 @@ This is an array of placeholders.
 
 You can skip this if your query does not utilize it.
 
-=item C<EVENT_S>
+=item C<EVENT>
 
-This is the success event, triggered whenever a query finished successfully.
+This is the event, triggered whenever a query finished.
 
 It will get a hash in ARG0, consult the specific queries on what you will get.
 
-=item C<EVENT_E>
-
-This is the error event, triggered whenever a query gets an error.
-
-It will get a plain string in ARG0, signifying the error.
+NOTE: If the key 'ERROR' exists in the hash, then it will contain the error string.
 
 =back
 

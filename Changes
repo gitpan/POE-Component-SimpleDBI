@@ -1,10 +1,10 @@
 Revision history for Perl extension POE::Component::SimpleDBI.
 
-0.2  Mon Oct 20 18:40:13 2003
+1.02  Mon Oct 20 18:40:13 2003
 	- original version; created by h2xs 1.22 with options
 		-A -X -v 0.1 -n POE::Component::SimpleDBI
 
-0.3 Tue Oct 21 15:31:37 2003
+1.03 Tue Oct 21 15:31:37 2003
 
 	Increments refcount for querying sessions so they don't go away
 	POD formatting
@@ -14,3 +14,13 @@ Revision history for Perl extension POE::Component::SimpleDBI.
 	Renamed the result hash: RESULTS to RESULT for better readability
 	SubProcess -> added DBI connect failure handling
 
+1.04 Tue Nov 18 17:57:18 2003
+
+	Got rid of the EVENT_S and EVENT_E handlers, replaced with a single EVENT handler
+	Internal changes to get rid of some stuff -> Send_Query / Send_Wheel
+	Added the Delete_Query event -> Deletes an query via ID
+	Changed the DO/MULTIPLE/SINGLE/QUOTE events to return an ID ( Only usable if call'ed )
+	Made sure that the ACTION key is sent back to the EVENT handler every time
+	Added some DEBUG stuff :)
+	Added the CHANGES section
+	Fixed some typos in the POD

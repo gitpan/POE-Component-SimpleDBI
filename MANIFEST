@@ -1,0 +1,7 @@
+Changes
+Makefile.PL
+MANIFEST
+README
+lib/POE/Component/SimpleDBI.pm
+lib/POE/Component/SimpleDBI/SubProcess.pm
+t/1.t

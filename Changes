@@ -1,0 +1,6 @@
+Revision history for Perl extension POE::Component::SimpleDBI.
+
+0.1  Mon Oct 20 18:40:13 2003
+	- original version; created by h2xs 1.22 with options
+		-A -X -v 0.1 -n POE::Component::SimpleDBI
+

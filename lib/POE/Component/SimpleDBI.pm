@@ -6,7 +6,7 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-our $VERSION = '1.05';
+our $VERSION = '1.06';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -294,6 +294,12 @@ sub DB_HANDLE {
 			}
 		}
 
+		# Check for baggage
+		if ( ! exists $args{'BAGGAGE'} ) {
+			# Simply make it undef
+			$args{'BAGGAGE'} = undef;
+		}
+
 		# Check if we have shutdown or not
 		if ( $_[HEAP]->{'SHUTDOWN'} ) {
 			# Do not accept this query
@@ -514,6 +520,7 @@ sub Got_STDOUT {
 			'PLACEHOLDERS'	=>	$query->{'PLACEHOLDERS'},
 			'ERROR'		=>	$_[ARG0]->{'ERROR'},
 			'ACTION'	=>	$query->{'ACTION'},
+			'BAGGAGE'	=>	$query->{'BAGGAGE'},
 			}
 		);
 	} else {
@@ -523,6 +530,7 @@ sub Got_STDOUT {
 			'PLACEHOLDERS'	=>	$query->{'PLACEHOLDERS'},
 			'RESULT'	=>	$_[ARG0]->{'DATA'},
 			'ACTION'	=>	$query->{'ACTION'},
+			'BAGGAGE'	=>	$query->{'BAGGAGE'},
 			}
 		);
 	}
@@ -580,6 +588,7 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 				$_[KERNEL]->post( 'SimpleDBI', 'SINGLE',
 					SQL => 'Select * from FooTable',
 					EVENT => 'success_handler',
+					BAGGAGE => 'Some Stuff I want to keep!',
 				);
 
 				my $id = $_[KERNEL]->call( 'SimpleDBI', 'MULTIPLE',
@@ -623,6 +632,7 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 		#	RESULT	=> scalar quoted SQL
 		#	PLACEHOLDERS => The placeholders
 		#	ACTION => QUOTE
+		#	BAGGAGE => whatever you set it to
 		# }
 
 		if ( exists $_[ARG0]->{'ERROR'} ) {
@@ -637,6 +647,7 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 		#	RESULT	=> scalar value of rows affected
 		#	PLACEHOLDERS => The placeholders
 		#	ACTION => DO
+		#	BAGGAGE => whatever you set it to
 		# }
 
 		if ( exists $_[ARG0]->{'ERROR'} ) {
@@ -651,6 +662,7 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 		#	RESULT	=> hash
 		#	PLACEHOLDERS => The placeholders
 		#	ACTION => SINGLE
+		#	BAGGAGE => whatever you set it to
 		# }
 
 		if ( exists $_[ARG0]->{'ERROR'} ) {
@@ -665,6 +677,7 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 		#	RESULT	=> array of hashes
 		#	PLACEHOLDERS => The placeholders
 		#	ACTION => MULTIPLE
+		#	BAGGAGE => whatever you set it to
 		# }
 
 		if ( exists $_[ARG0]->{'ERROR'} ) {
@@ -688,6 +701,12 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 		POE::Component::DBIAgent
 
 =head1 CHANGES
+
+=head2 1.05 -> 1.06
+
+	Fixed some typos in the POD
+
+	Added the BAGGAGE option
 
 =head2 1.04 -> 1.05
 
@@ -811,6 +830,16 @@ They all share a common argument format, except for the shutdown and Delete_Quer
 		EVENT => 'quote_handler',
 	);
 
+	The Event handler will get a hash in ARG0:
+	{
+		'SQL'		=>	Original SQL inputted
+		'RESULT'	=>	The quoted SQL
+		'PLACEHOLDERS'	=>	Original placeholders
+		'ACTION'	=>	'QUOTE'
+		'ERROR'		=>	exists only if an error occured
+		'BAGGAGE'	=>	whatever you set it to
+	}
+
 	Note: It will return the internal query ID if you store the return value via call:
 	my $queryid = $_[KERNEL]->call( ... );
 
@@ -843,6 +872,7 @@ They all share a common argument format, except for the shutdown and Delete_Quer
 		'PLACEHOLDERS'	=>	Original placeholders
 		'ACTION'	=>	'DO'
 		'ERROR'		=>	exists only if an error occured
+		'BAGGAGE'	=>	whatever you set it to
 	}
 
 	Note: It will return the internal query ID if you store the return value via call:
@@ -853,6 +883,8 @@ They all share a common argument format, except for the shutdown and Delete_Quer
 =item C<SINGLE>
 
 	This query is specialized for those queries where you will get exactly 1 result back.
+
+	Keep in mind: the column names are all lowercased automatically!
 
 	NOTE: This subroutine will automatically append ' LIMIT 1' to all queries passed in.
 
@@ -878,6 +910,7 @@ They all share a common argument format, except for the shutdown and Delete_Quer
 		'PLACEHOLDERS'	=>	Original placeholders
 		'ACTION'	=>	'SINGLE'
 		'ERROR'		=>	exists only if an error occured
+		'BAGGAGE'	=>	whatever you set it to
 	}
 
 	Note: It will return the internal query ID if you store the return value via call:
@@ -888,6 +921,8 @@ They all share a common argument format, except for the shutdown and Delete_Quer
 =item C<MULTIPLE>
 
 	This query is specialized for those queries where you will get more than 1 result back.
+
+	Keep in mind: the column names are all lowercased automatically!
 
 	Internally, it does this:
 
@@ -914,7 +949,7 @@ They all share a common argument format, except for the shutdown and Delete_Quer
 		'PLACEHOLDERS'	=>	Original placeholders
 		'ACTION'	=>	'MULTIPLE'
 		'ERROR'		=>	exists only if an error occured
-
+		'BAGGAGE'	=>	whatever you set it to
 	}
 
 	Note: It will return the internal query ID if you store the return value via call:
@@ -988,6 +1023,13 @@ This is the event, triggered whenever a query finished.
 It will get a hash in ARG0, consult the specific queries on what you will get.
 
 NOTE: If the key 'ERROR' exists in the hash, then it will contain the error string.
+
+=item C<BAGGAGE>
+
+This is a special argument, you can "attach" any kind of baggage to a query.
+The baggage will be kept by SimpleDBI and returned to the Event handler intact.
+
+This is good for storing data associated with a query like a client object, etc.
 
 =back
 

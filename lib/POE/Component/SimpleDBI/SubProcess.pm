@@ -6,7 +6,7 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-our $VERSION = '1.06';
+our $VERSION = '1.07';
 
 # Use Error.pm's try/catch semantics
 use Error qw( :try );
@@ -22,6 +22,9 @@ our $filter = POE::Filter::Reference->new();
 
 # Our DBI handle
 our $DB = undef;
+
+# Save the connect struct for future use
+our $CONN = undef;
 
 # Autoflush to avoid weirdness
 $|++;
@@ -139,6 +142,9 @@ sub DB_CONNECT {
 				$output = {
 					'ID'	=>	$data->{'ID'},
 				};
+
+				# Save this!
+				$CONN = $data;
 			}
 		} catch Error with {
 			# Get the error
@@ -435,7 +441,7 @@ sub DB_DO {
 		if ( defined $rows_affected && ! defined $output ) {
 			# Make the data structure
 			$output = {};
-			$output->{'ROWS'} = $rows_affected;
+			$output->{'DATA'} = $rows_affected;
 			$output->{'ID'} = $data->{'ID'};
 		} elsif ( ! defined $rows_affected && ! defined $output ) {
 			# Internal error...

@@ -6,7 +6,7 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-our $VERSION = '1.09';
+our $VERSION = '1.10';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -716,7 +716,7 @@ sub Delete_Query {
 
 	# Check if the id exists + not at the top of the queue :)
 	if ( defined @{ $_[HEAP]->{'QUEUE'} }[0] ) {
-		if ( @{ $_[HEAP]->{'QUEUE'} }[0]->{'ID'} eq $id ) {
+		if ( $_[HEAP]->{'QUEUE'}->[0]->{'ID'} eq $id ) {
 			# Extensive debug
 			if ( DEBUG ) {
 				warn 'Could not delete query as it is being processed by the SubProcess!';
@@ -876,8 +876,8 @@ sub Got_STDOUT {
 	}
 
 	# Check to see if the ID matches with the top of the queue
-	if ( $data->{'ID'} ne @{ $_[HEAP]->{'QUEUE'} }[0]->{'ID'} ) {
-		die "Internal error in queue/child consistency! ( CHILD: $data->{'ID'} QUEUE: @{ $_[HEAP]->{'QUEUE'} }[0]->{'ID'}";
+	if ( $data->{'ID'} ne $_[HEAP]->{'QUEUE'}->[0]->{'ID'} ) {
+		die "Internal error in queue/child consistency! ( CHILD: $data->{'ID'} QUEUE: $_[HEAP]->{'QUEUE'}->[0]->{'ID'}";
 	}
 
 	# Get the query from the top of the queue
@@ -1042,6 +1042,10 @@ POE::Component::SimpleDBI - Asynchronous non-blocking DBI calls in POE made simp
 		POE::Component::LaDBI
 
 =head1 CHANGES
+
+=head2 1.09 -> 1.10
+
+	Fixed a bug in the DO routine, thanks to Hannes!
 
 =head2 1.08 -> 1.09
 

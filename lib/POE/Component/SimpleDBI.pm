@@ -6,7 +6,7 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-our $VERSION = '1.10';
+our $VERSION = '1.11';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -105,6 +105,7 @@ sub new {
 			'DB_USERNAME'	=>	undef,
 			'DB_PASSWORD'	=>	undef,
 			'DB_EVENT'	=>	undef,
+			'DB_SESSION'	=>	undef,
 
 			# Are we connected?
 			'CONNECTED'	=>	0,
@@ -827,7 +828,7 @@ sub Stop {
 sub ChildClosed {
 	# Emit debugging information
 	if ( DEBUG ) {
-		warn 'POE::Component::SimpleDBI\'s Wheel died!';
+		warn "POE::Component::SimpleDBI's Wheel died!";
 	}
 
 	# Get rid of the wheel
@@ -872,6 +873,32 @@ sub Got_STDOUT {
 		if ( DEBUG ) {
 			warn "The backend got a SYSREAD error: $data->{'ERROR'}";
 		}
+		return;
+	}
+
+	# Special server discon error is here
+	if ( $data->{'ID'} eq 'GONE' ) {
+		if ( DEBUG ) {
+			warn "The backend failed the \$dbh->ping test and couldn't reconnect!";
+		}
+
+		# We are now disconnected
+		$_[HEAP]->{'CONNECTED'} = 0;
+		$_[HEAP]->{'ACTIVE'} = 0;
+
+		# Construct the response
+		my $ret = {
+			'ERROR'		=>	$data->{'ERROR'},
+			'GONE'		=>	1,
+			'DSN'		=>	$_[HEAP]->{'DB_DSN'},
+			'USERNAME'	=>	$_[HEAP]->{'DB_USERNAME'},
+			'PASSWORD'	=>	$_[HEAP]->{'DB_PASSWORD'},
+		};
+
+		# Okay, we have to inform the session it failed and couldn't reconnect
+		$_[KERNEL]->post( $_[HEAP]->{'DB_SESSION'}, $_[HEAP]->{'DB_EVENT'}, $ret );
+
+		# All done!
 		return;
 	}
 
@@ -1042,6 +1069,15 @@ POE::Component::SimpleDBI - Asynchronous non-blocking DBI calls in POE made simp
 		POE::Component::LaDBI
 
 =head1 CHANGES
+
+=head2 1.10 -> 1.11
+
+	Hannes had a problem:
+		His IRC bot logs events to a database, and sometimes there is no events to log after
+		hours and hours of inactivity ( must be a boring channel haha ), the db server disconnected!
+
+	The solution was to do a $dbh->ping() before each query, if your DBI driver does it inefficiently, go yell at them!
+	In the event that a reconnect is not possible, an error will be sent to the CONNECT event handler, look at the updated pod.
 
 =head2 1.09 -> 1.10
 
@@ -1264,6 +1300,7 @@ You can skip this if your query does not utilize it.
 	The Event handler will get a hash in ARG0:
 	{
 		'ERROR'		=>	exists only if an error occured
+		'GONE'		=>	exists only if the server was disconnected and the reconnect failed
 		'ACTION'	=>	'CONNECT'
 		'ID'		=>	ID of the Query
 		'EVENT'		=>	The event the query will respond to
@@ -1282,6 +1319,12 @@ You can skip this if your query does not utilize it.
 		$_[KERNEL]->post( 'SimpleDBI', 'shutdown' );
 
 	They all will be executed in the right order!
+
+	As of 1.11 SimpleDBI now detects whether the backend lost the connection to the database server. The backend will
+	automatically reconnect if it happens, but if that fails, an error will be sent to the session/event specified here
+	with an extra key: 'GONE'. In this state SimpleDBI is deadlocked, any new queries will not be processed until a
+	CONNECT NOW event is issued! Keep in mind the SINGLE/etc queries WILL NOT receive an error if this happens, the error
+	goes straight to the CONNECT handler to keep it simple!
 
 =head3 C<DISCONNECT>
 

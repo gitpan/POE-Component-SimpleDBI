@@ -6,7 +6,7 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-our $VERSION = '1.07';
+our $VERSION = '1.08';
 
 # Use Error.pm's try/catch semantics
 use Error qw( :try );
@@ -102,8 +102,11 @@ sub DB_CONNECT {
 	# Our output structure
 	my $output = undef;
 
+	# Are we reconnecting?
+	my $reconn = shift;
+
 	# Are we already connected?
-	if ( defined $DB ) {
+	if ( defined $DB and $DB->ping() ) {
 		# Output success
 		$output = {
 			'ID'	=>	$data->{'ID'},
@@ -156,7 +159,16 @@ sub DB_CONNECT {
 	}
 
 	# All done!
-	output( $output );
+	if ( ! defined $reconn ) {
+		output( $output );
+	} else {
+		# Reconnect attempt, was it successful?
+		if ( ! exists $output->{'ERROR'} ) {
+			return 1;
+		} else {
+			return undef;
+		}
+	}
 }
 
 # Disconnects from the DB
@@ -206,26 +218,30 @@ sub DB_QUOTE {
 	my $output = undef;
 
 	# Check if we are connected
-	if ( ! defined $DB ) {
-		$output = Make_Error( $data->{'ID'}, 'Not connected to the database!' );
-	} else {
-		# Quote it!
-		try {
-			$quoted = $DB->quote( $data->{'SQL'} );
-		} catch Error with {
-			# Get the error
-			my $e = shift;
-
-			$output = Make_Error( $data->{'ID'}, $e );
-		};
-
-		# Check for errors
-		if ( ! defined $output ) {
-			# Make output include the results
-			$output = {};
-			$output->{'DATA'} = $quoted;
-			$output->{'ID'} = $data->{'ID'};
+	if ( ! defined $DB or ! $DB->ping() ) {
+		# Automatically try to reconnect
+		if ( ! DB_CONNECT( $CONN, 'RECONNECT' ) ) {
+			output( Make_Error( 'GONE', 'Lost connection to the database server.' ) );
+			return;
 		}
+	}
+
+	# Quote it!
+	try {
+		$quoted = $DB->quote( $data->{'SQL'} );
+	} catch Error with {
+		# Get the error
+		my $e = shift;
+
+		$output = Make_Error( $data->{'ID'}, $e );
+	};
+
+	# Check for errors
+	if ( ! defined $output ) {
+		# Make output include the results
+		$output = {};
+		$output->{'DATA'} = $quoted;
+		$output->{'ID'} = $data->{'ID'};
 	}
 
 	# All done!
@@ -243,76 +259,80 @@ sub DB_MULTIPLE {
 	my $result = [];
 
 	# Check if we are connected
-	if ( ! defined $DB ) {
-		$output = Make_Error( $data->{'ID'}, 'Not connected to the database!' );
-	} else {
-		# Catch any errors :)
-		try {
-			# Make a new statement handler and prepare the query
-			# We use the prepare_cached method in hopes of hitting a cached one...
-			$sth = $DB->prepare_cached( $data->{'SQL'} );
+	if ( ! defined $DB or ! $DB->ping() ) {
+		# Automatically try to reconnect
+		if ( ! DB_CONNECT( $CONN, 'RECONNECT' ) ) {
+			output( Make_Error( 'GONE', 'Lost connection to the database server.' ) );
+			return;
+		}
+	}
 
-			# Check for undef'ness
-			if ( ! defined $sth ) {
-				die "Did not get sth: $DBI::errstr";
-			} else {
-				# Execute the query
-				try {
-					# Put placeholders?
-					if ( exists $data->{'PLACEHOLDERS'} ) {
-						$sth->execute( @{ $data->{'PLACEHOLDERS'} } );
-					} else {
-						$sth->execute();
-					}
-				} catch Error with {
-					die $sth->errstr;
-				};
-			}
+	# Catch any errors :)
+	try {
+		# Make a new statement handler and prepare the query
+		# We use the prepare_cached method in hopes of hitting a cached one...
+		$sth = $DB->prepare_cached( $data->{'SQL'} );
 
-			# The result hash
-			my $newdata;
-
-			# Bind the columns
+		# Check for undef'ness
+		if ( ! defined $sth ) {
+			die "Did not get sth: $DBI::errstr";
+		} else {
+			# Execute the query
 			try {
-				$sth->bind_columns( \( @$newdata{ @{ $sth->{'NAME_lc'} } } ) );
-			} catch Error with {
-				die $sth->errstr;
-			};
-
-			# Actually do the query!
-			try {
-				while ( $sth->fetch() ) {
-					# Copy the data, and push it into the array
-					push( @{ $result }, { %{ $newdata } } );
+				# Put placeholders?
+				if ( exists $data->{'PLACEHOLDERS'} ) {
+					$sth->execute( @{ $data->{'PLACEHOLDERS'} } );
+				} else {
+					$sth->execute();
 				}
 			} catch Error with {
 				die $sth->errstr;
 			};
+		}
 
-			# Check for any errors that might have terminated the loop early
-			if ( $sth->err() ) {
-				# Premature termination!
-				die $sth->errstr;
-			}
+		# The result hash
+		my $newdata;
+
+		# Bind the columns
+		try {
+			$sth->bind_columns( \( @$newdata{ @{ $sth->{'NAME_lc'} } } ) );
 		} catch Error with {
-			# Get the error
-			my $e = shift;
-
-			$output = Make_Error( $data->{'ID'}, $e );
+			die $sth->errstr;
 		};
 
-		# Check if we got any errors
-		if ( ! defined $output ) {
-			# Make output include the results
-			$output = {};
-			$output->{'DATA'} = $result;
-			$output->{'ID'} = $data->{'ID'};
-		}
+		# Actually do the query!
+		try {
+			while ( $sth->fetch() ) {
+				# Copy the data, and push it into the array
+				push( @{ $result }, { %{ $newdata } } );
+			}
+		} catch Error with {
+			die $sth->errstr;
+		};
 
-		# Finally, we clean up this statement handle
-		if ( defined $sth ) {
-			$sth->finish();
+		# Check for any errors that might have terminated the loop early
+		if ( $sth->err() ) {
+			# Premature termination!
+			die $sth->errstr;
 		}
+	} catch Error with {
+		# Get the error
+		my $e = shift;
+
+		$output = Make_Error( $data->{'ID'}, $e );
+	};
+
+	# Check if we got any errors
+	if ( ! defined $output ) {
+		# Make output include the results
+		$output = {};
+		$output->{'DATA'} = $result;
+		$output->{'ID'} = $data->{'ID'};
+	}
+
+	# Finally, we clean up this statement handle
+	if ( defined $sth ) {
+		$sth->finish();
 	}
 
 	# Return the data structure
@@ -330,64 +350,68 @@ sub DB_SINGLE {
 	my $result = undef;
 
 	# Check if we are connected
-	if ( ! defined $DB ) {
-		$output = Make_Error( $data->{'ID'}, 'Not connected to the database!' );
-	} else {
-		# Catch any errors :)
+	if ( ! defined $DB or ! $DB->ping() ) {
+		# Automatically try to reconnect
+		if ( ! DB_CONNECT( $CONN, 'RECONNECT' ) ) {
+			output( Make_Error( 'GONE', 'Lost connection to the database server.' ) );
+			return;
+		}
+	}
+
+	# Catch any errors :)
+	try {
+		# Make a new statement handler and prepare the query
+		# We use the prepare_cached method in hopes of hitting a cached one...
+		$sth = $DB->prepare_cached( $data->{'SQL'} );
+
+		# Check for undef'ness
+		if ( ! defined $sth ) {
+			die "Did not get sth: $DBI::errstr";
+		} else {
+			# Execute the query
+			try {
+				# Put placeholders?
+				if ( exists $data->{'PLACEHOLDERS'} ) {
+					$sth->execute( @{ $data->{'PLACEHOLDERS'} } );
+				} else {
+					$sth->execute();
+				}
+			} catch Error with {
+				die $sth->errstr;
+			};
+		}
+
+		# Bind the columns
 		try {
-			# Make a new statement handler and prepare the query
-			# We use the prepare_cached method in hopes of hitting a cached one...
-			$sth = $DB->prepare_cached( $data->{'SQL'} );
-
-			# Check for undef'ness
-			if ( ! defined $sth ) {
-				die "Did not get sth: $DBI::errstr";
-			} else {
-				# Execute the query
-				try {
-					# Put placeholders?
-					if ( exists $data->{'PLACEHOLDERS'} ) {
-						$sth->execute( @{ $data->{'PLACEHOLDERS'} } );
-					} else {
-						$sth->execute();
-					}
-				} catch Error with {
-					die $sth->errstr;
-				};
-			}
-
-			# Bind the columns
-			try {
-				$sth->bind_columns( \( @$result{ @{ $sth->{'NAME_lc'} } } ) );
-			} catch Error with {
-				die $sth->errstr;
-			};
-
-			# Actually do the query!
-			try {
-				$sth->fetch();
-			} catch Error with {
-				die $sth->errstr;
-			};
+			$sth->bind_columns( \( @$result{ @{ $sth->{'NAME_lc'} } } ) );
 		} catch Error with {
-			# Get the error
-			my $e = shift;
-
-			$output = Make_Error( $data->{'ID'}, $e );
+			die $sth->errstr;
 		};
 
-		# Check if we got any errors
-		if ( ! defined $output ) {
-			# Make output include the results
-			$output = {};
-			$output->{'DATA'} = $result;
-			$output->{'ID'} = $data->{'ID'};
-		}
+		# Actually do the query!
+		try {
+			$sth->fetch();
+		} catch Error with {
+			die $sth->errstr;
+		};
+	} catch Error with {
+		# Get the error
+		my $e = shift;
 
-		# Finally, we clean up this statement handle
-		if ( defined $sth ) {
-			$sth->finish();
-		}
+		$output = Make_Error( $data->{'ID'}, $e );
+	};
+
+	# Check if we got any errors
+	if ( ! defined $output ) {
+		# Make output include the results
+		$output = {};
+		$output->{'DATA'} = $result;
+		$output->{'ID'} = $data->{'ID'};
+	}
+
+	# Finally, we clean up this statement handle
+	if ( defined $sth ) {
+		$sth->finish();
 	}
 
 	# Return the data structure
@@ -405,53 +429,57 @@ sub DB_DO {
 	my $rows_affected = undef;
 
 	# Check if we are connected
-	if ( ! defined $DB ) {
-		$output = Make_Error( $data->{'ID'}, 'Not connected to the database!' );
-	} else {
-		# Catch any errors :)
-		try {
-			# Make a new statement handler and prepare the query
-			# We use the prepare_cached method in hopes of hitting a cached one...
-			$sth = $DB->prepare_cached( $data->{'SQL'} );
-
-			# Check for undef'ness
-			if ( ! defined $sth ) {
-				die "Did not get sth: $DBI::errstr";
-			} else {
-				# Execute the query
-				try {
-					# Put placeholders?
-					if ( exists $data->{'PLACEHOLDERS'} ) {
-						$rows_affected = $sth->execute( @{ $data->{'PLACEHOLDERS'} } );
-					} else {
-						$rows_affected = $sth->execute();
-					}
-				} catch Error with {
-					die $sth->errstr;
-				};
-			}
-		} catch Error with {
-			# Get the error
-			my $e = shift;
-
-			$output = Make_Error( $data->{'ID'}, $e );
-		};
-
-		# If rows_affected is not undef, that means we were successful
-		if ( defined $rows_affected && ! defined $output ) {
-			# Make the data structure
-			$output = {};
-			$output->{'DATA'} = $rows_affected;
-			$output->{'ID'} = $data->{'ID'};
-		} elsif ( ! defined $rows_affected && ! defined $output ) {
-			# Internal error...
-			die 'Internal Error in DB_DO';
+	if ( ! defined $DB or ! $DB->ping() ) {
+		# Automatically try to reconnect
+		if ( ! DB_CONNECT( $CONN, 'RECONNECT' ) ) {
+			output( Make_Error( 'GONE', 'Lost connection to the database server.' ) );
+			return;
 		}
+	}
 
-		# Finally, we clean up this statement handle
-		if ( defined $sth ) {
-			$sth->finish();
+	# Catch any errors :)
+	try {
+		# Make a new statement handler and prepare the query
+		# We use the prepare_cached method in hopes of hitting a cached one...
+		$sth = $DB->prepare_cached( $data->{'SQL'} );
+
+		# Check for undef'ness
+		if ( ! defined $sth ) {
+			die "Did not get sth: $DBI::errstr";
+		} else {
+			# Execute the query
+			try {
+				# Put placeholders?
+				if ( exists $data->{'PLACEHOLDERS'} ) {
+					$rows_affected = $sth->execute( @{ $data->{'PLACEHOLDERS'} } );
+				} else {
+					$rows_affected = $sth->execute();
+				}
+			} catch Error with {
+				die $sth->errstr;
+			};
 		}
+	} catch Error with {
+		# Get the error
+		my $e = shift;
+
+		$output = Make_Error( $data->{'ID'}, $e );
+	};
+
+	# If rows_affected is not undef, that means we were successful
+	if ( defined $rows_affected && ! defined $output ) {
+		# Make the data structure
+		$output = {};
+		$output->{'DATA'} = $rows_affected;
+		$output->{'ID'} = $data->{'ID'};
+	} elsif ( ! defined $rows_affected && ! defined $output ) {
+		# Internal error...
+		die 'Internal Error in DB_DO';
+	}
+
+	# Finally, we clean up this statement handle
+	if ( defined $sth ) {
+		$sth->finish();
 	}
 
 	# Return the data structure
@@ -525,7 +553,7 @@ Apocalypse E<lt>apocal@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2004 by Apocalypse
+Copyright 2005 by Apocalypse
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

@@ -6,7 +6,7 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-our $VERSION = do { my @r = (q$Revision: 1.2 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+our $VERSION = do { my @r = (q$Revision: 1.3 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -24,6 +24,9 @@ use Carp;
 # Our own definition of the max retries
 sub MAX_RETRIES () { 5 }
 sub DEBUG () { 0 }
+
+# Autoflush to avoid weirdness
+$|++;
 
 # Set things in motion!
 sub new {
@@ -97,8 +100,7 @@ sub new {
 			'Setup_Wheel'	=>	\&Setup_Wheel,
 
 			# Shutdown stuff
-			'shutdown'	=>	\&Clean_Shutdown,
-			'shutdown_NOW'	=>	\&Real_Shutdown,
+			'shutdown'	=>	\&Shutdown,
 
 			# IO events
 			'ChildError'	=>	\&ChildError,
@@ -147,49 +149,65 @@ sub new {
 	return 1;
 }
 
-# This subroutine handles SHUTDOWN signals
-sub Clean_Shutdown {
-	# Do not accept any more queries
-	$_[HEAP]->{'SHUTDOWN'} = 1;
-
-	# Put into the queue EXIT for the child
-	$_[KERNEL]->yield( 'Send_Query', {
-		'ACTION'	=>	'EXIT',
-		'SQL'		=>	undef,
-		'PLACEHOLDERS'	=>	undef,
+# This subroutine handles shutdown signals
+sub Shutdown {
+	# Check for duplicate shutdown signals
+	if ( $_[HEAP]->{'SHUTDOWN'} ) {
+		# Okay, let's see what's going on
+		if ( $_[HEAP]->{'SHUTDOWN'} == 1 && ! defined $_[ARG0] ) {
+			# Duplicate shutdown events
+			return;
+		} elsif ( $_[HEAP]->{'SHUTDOWN'} == 2 ) {
+			# Tried to shutdown_NOW again...
+			return;
 		}
-	);
-
-	# Remove our alias so we can be properly terminated
-	$_[KERNEL]->alias_remove( $_[HEAP]->{'ALIAS'} );
-}
-
-# This subroutine kills our subprocess
-sub Real_Shutdown {
-	# Do not accept any more queries
-	$_[HEAP]->{'SHUTDOWN'} = 2;
-
-	# Remove our alias so we can be properly terminated
-	$_[KERNEL]->alias_remove( $_[HEAP]->{'ALIAS'} );
-
-	# KILL our subprocess
-	$_[HEAP]->{'WHEEL'}->kill( -9 );
-
-	# Delete the wheel, so we have nothing to keep the GC from destructing us...
-	delete $_[HEAP]->{'WHEEL'};
-
-	# Post a failure event to all the queries on the Queue, informing them that we have been shutdown...
-	foreach my $queue ( @{ $_[HEAP]->{'QUEUE'} } ) {
-		$_[KERNEL]->post( $queue->{'SESSION'}, $queue->{'EVENT_E'}, {
-			'SQL'		=>	$queue->{'SQL'},
-			'PLACEHOLDERS'	=>	$queue->{'PLACEHOLDERS'},
-			'ERROR'		=>	'POE::Component::SimpleDBI was shut down forcibly!',
-			},
-		);
+	} else {
+		# Remove our alias so we can be properly terminated
+		$_[KERNEL]->alias_remove( $_[HEAP]->{'ALIAS'} );
 	}
 
-	# Tell the kernel to kill us!
-	$_[KERNEL]->signal( $_[SESSION], 'KILL' );
+	# Check if we got "NOW"
+	if ( defined $_[ARG0] && $_[ARG0] eq 'NOW' ) {
+		# Actually shut down!
+		$_[HEAP]->{'SHUTDOWN'} = 2;
+
+		# KILL our subprocess
+		$_[HEAP]->{'WHEEL'}->kill( -9 );
+
+		# Delete the wheel, so we have nothing to keep the GC from destructing us...
+		delete $_[HEAP]->{'WHEEL'};
+
+		# Go over our queue, and do some stuff
+		foreach my $queue ( @{ $_[HEAP]->{'QUEUE'} } ) {
+			# Skip the special EXIT actions we might have put on the queue
+			if ( $queue->{'ACTION'} eq 'EXIT' ) { next }
+
+			# Post a failure event to all the queries on the Queue, informing them that we have been shutdown...
+			$_[KERNEL]->post( $queue->{'SESSION'}, $queue->{'EVENT_E'}, {
+				'SQL'		=>	$queue->{'SQL'},
+				'PLACEHOLDERS'	=>	$queue->{'PLACEHOLDERS'},
+				'ERROR'		=>	'POE::Component::SimpleDBI was shut down forcibly!',
+				},
+			);
+
+			# Argh, decrement the refcount
+			$_[KERNEL]->refcount_decrement( $queue->{'SESSION'}, 'SimpleDBI' );
+		}
+
+		# Tell the kernel to kill us!
+		$_[KERNEL]->signal( $_[SESSION], 'KILL' );
+	} else {
+		# Gracefully shut down...
+		$_[HEAP]->{'SHUTDOWN'} = 1;
+
+		# Put into the queue EXIT for the child
+		$_[KERNEL]->yield( 'Send_Query', {
+			'ACTION'	=>	'EXIT',
+			'SQL'		=>	undef,
+			'PLACEHOLDERS'	=>	undef,
+			}
+		);
+	}
 }
 
 # This subroutine handles MULTIPLE + SINGLE + DO queries
@@ -289,6 +307,9 @@ sub DB_HANDLE {
 		return;
 	}
 
+	# Increment the refcount for the session that is sending us this query
+	$_[KERNEL]->refcount_increment( $_[SENDER]->ID(), 'SimpleDBI' );
+
 	# Okay, fire off this query!
 	$_[KERNEL]->yield( 'Send_Query', \%args );
 }
@@ -352,7 +373,7 @@ sub Setup_Wheel {
 	}
 
 	# Check if we should set up the wheel
-	if ( $_[HEAP]->{'Retries'} >= MAX_RETRIES ) {
+	if ( $_[HEAP]->{'Retries'} == MAX_RETRIES ) {
 		die 'POE::Component::SimpleDBI tried ' . MAX_RETRIES . ' times to create a Wheel and is giving up...';
 	}
 
@@ -432,7 +453,7 @@ sub ChildError {
 	# Emit warnings only if debug is on
 	if ( DEBUG ) {
 		# Copied from POE::Wheel::Run manpage
-		my ( $operation, $errnum, $errstr, $wheel_id ) = @_[ARG0..ARG3];
+		my ( $operation, $errnum, $errstr ) = @_[ ARG0 .. ARG2 ];
 		warn "POE::Component::SimpleDBI got an $operation error $errnum: $errstr\n";
 	}
 }
@@ -441,13 +462,24 @@ sub ChildError {
 sub Got_STDOUT {
 	# Validate the argument
 	if ( ref( $_[ARG0] ) ne 'HASH' ) {
-		warn 'POE::Component::SimpleDBI Did not get a hash from the child';
+		warn "POE::Component::SimpleDBI did not get a hash from the child ( $_[ARG0] )";
 		return;
+	}
+
+	# Check for special DB messages with ID of 'DBI'
+	if ( $_[ARG0]->{'ID'} eq 'DBI' ) {
+		# Okay, we received a DBI error -> error in connection...
+
+		# Shutdown ourself!
+		$_[KERNEL]->call( $_[SESSION], 'shutdown', 'NOW' );
+
+		# Too bad that we have to die...
+		croak( "Could not connect to DBI: $_[ARG0]->{'ERROR'}" );
 	}
 
 	# Check to see if the ID matches with the top of the queue
 	if ( $_[ARG0]->{'ID'} ne @{ $_[HEAP]->{'QUEUE'} }[0]->{'ID'} ) {
-		die 'Internal error in queue/child consistency!';
+		die "Internal error in queue/child consistency! ( CHILD: $_[ARG0]->{'ID'} QUEUE: @{ $_[HEAP]->{'QUEUE'} }[0]->{'ID'}";
 	}
 
 	# Get the query from the top of the queue
@@ -467,11 +499,14 @@ sub Got_STDOUT {
 		$_[KERNEL]->post( $query->{'SESSION'}, $query->{'EVENT_S'}, {
 			'SQL'		=>	$query->{'SQL'},
 			'PLACEHOLDERS'	=>	$query->{'PLACEHOLDERS'},
-			'RESULTS'	=>	$_[ARG0]->{'DATA'},
+			'RESULT'	=>	$_[ARG0]->{'DATA'},
 			'ACTION'	=>	$query->{'ACTION'},
 			}
 		);
 	}
+
+	# Decrement the refcount for the session that sent us a query
+	$_[KERNEL]->refcount_decrement( $query->{'SESSION'}, 'SimpleDBI' );
 
 	# Now, that we have got a result, check if we need to send another query
 	$_[HEAP]->{'ACTIVE'} = 0;
@@ -547,10 +582,10 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 
 				# This will terminate when the event traverses
 				# POE's queue and arrives at SimpleDBI
-				$_[KERNEL]->post( 'SimpleDBI', 'shutdown_NOW' );
+				$_[KERNEL]->post( 'SimpleDBI', 'shutdown', 'NOW' );
 
 				# Even QUICKER shutdown :)
-				$_[KERNEL]->call( 'SimpleDBI', 'shutdown_NOW' );
+				$_[KERNEL]->call( 'SimpleDBI', 'shutdown', 'NOW' );
 			},
 
 			success_handler => \&success_handler,
@@ -565,7 +600,7 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 		# For QUOTE calls, we receive the scalar string of SQL quoted
 		# $_[ARG0] = {
 		#	SQL => The SQL You put in
-		#	RESULTS	=> scalar quoted SQL
+		#	RESULT	=> scalar quoted SQL
 		#	PLACEHOLDERS => The placeholders
 		#	ACTION => QUOTE
 		# }
@@ -575,7 +610,7 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 		# For DO calls, we receive the scalar value of rows affected
 		# $_[ARG0] = {
 		#	SQL => The SQL You put in
-		#	RESULTS	=> scalar value of rows affected
+		#	RESULT	=> scalar value of rows affected
 		#	PLACEHOLDERS => The placeholders
 		#	ACTION => DO
 		# }
@@ -585,7 +620,7 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 		# For SINGLE calls, we receive a hash ( similar to fetchrow_hash )
 		# $_[ARG0] = {
 		#	SQL => The SQL You put in
-		#	RESULTS	=> hash
+		#	RESULT	=> hash
 		#	PLACEHOLDERS => The placeholders
 		#	ACTION => SINGLE
 		# }
@@ -595,7 +630,7 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 		# For MULTIPLE calls, we receive an array of hashes
 		# $_[ARG0] = {
 		#	SQL => The SQL You put in
-		#	RESULTS	=> array of hashes
+		#	RESULT	=> array of hashes
 		#	PLACEHOLDERS => The placeholders
 		#	ACTION => MULTIPLE
 		# }
@@ -639,7 +674,21 @@ The standard way to use this module is to do this:
 
 	POE::Kernel->run();
 
-=head2 The only function you can call is POE::Component::SimpleDBI->new()
+=head2 Starting SimpleDBI
+
+To start SimpleDBI, just call it's new method:
+
+	POE::Component::SimpleDBI->new(
+		'ALIAS'		=>	'DataBase',
+		'DSN'		=>	'floobarz',
+		'USERNAME'	=>	'DBLogin',
+		'PASSWORD'	=>	'DBPass',
+	);
+
+This method will die on error or return success.
+
+NOTE: If the SubProcess could not connect to the DB, it will return
+an error, causing SimpleDBI to croak.
 
 This constructor accepts only 4 different options.
 
@@ -669,56 +718,10 @@ Simply put, this is the DB password SimpleDBI will use.
 
 =back
 
-=head2 Semantics of SimpleDBI
+=head2 Events
 
-SimpleDBI has a few Event states you need to know about.
-
-=over 4
-
-=item C<EVENT_S>
-
-This is the success event, triggered whenever a query finished successfully.
-
-It will get a hash in ARG0, consult the specific queries on what you will get.
-
-=item C<EVENT_E>
-
-This is the error event, triggered whenever a query gets an error.
-
-It will get a plain string in ARG0, signifying the error.
-
-=back
-
-=head2 Event Handlers
-
-SimpleDBI has a few events you can send to.
-
-They all share a common argument system.
-
-=over 4
-
-=item C<SQL>
-
-This is the actual SQL line you want SimpleDBI to execute.
-You can put in placeholders, this module supports them.
-
-=item C<PLACEHOLDERS>
-
-This is an array of placeholders.
-
-You can skip this if your query does not utilize it.
-
-=item C<EVENT_S>
-
-This is the success event state.
-
-=item C<EVENT_E>
-
-This is the error event state.
-
-=back
-
-=head3 Events
+There is only a few events you can trigger in SimpleDBI.
+They all share a common argument format, except for the shutdown event.
 
 =over 4
 
@@ -741,13 +744,14 @@ This is the error event state.
 	The Success Event handler will get a hash in ARG0:
 	{
 		'SQL'		=>	Original SQL inputted
-		'RESULTS'	=>	Quoted SQL
+		'RESULT'	=>	Quoted SQL
 	}
 
 =item C<DO>
 
 	This query is specialized for those queries where you UPDATE/DELETE/etc.
-	THIS IS NOT for SELECT QUERIES!
+
+	THIS IS NOT FOR SELECT QUERIES!
 
 	Internally, it does this:
 
@@ -767,7 +771,7 @@ This is the error event state.
 	The Success Event handler will get a hash in ARG0:
 	{
 		'SQL'		=>	Original SQL inputted
-		'RESULTS'	=>	Scalar value of rows affected
+		'RESULT'	=>	Scalar value of rows affected
 		'PLACEHOLDERS'	=>	Original placeholders
 	}
 
@@ -776,7 +780,6 @@ This is the error event state.
 	This query is specialized for those queries where you will get exactly 1 result back.
 
 	NOTE: This subroutine will automatically append ' LIMIT 1' to all queries passed in.
-	If this behavior is not desirable, please contact me and I will update SimpleDBI.
 
 	Internally, it does this:
 
@@ -797,7 +800,7 @@ This is the error event state.
 	The Success Event handler will get a hash in ARG0:
 	{
 		'SQL'		=>	Original SQL inputted
-		'RESULTS'	=>	Hash of rows - similar to fetchrow_hashref
+		'RESULT'	=>	Hash of rows - similar to fetchrow_hashref
 		'PLACEHOLDERS'	=>	Original placeholders
 	}
 
@@ -808,7 +811,7 @@ This is the error event state.
 	Internally, it does this:
 
 	$sth = $dbh->prepare_cached( $SQL );
-	$sth->bind_columns( %result );
+	$sth->bind_columns( %row );
 	$sth->execute( $PLACEHOLDERS );
 	while ( $sth->fetch() ) {
 		push( @results, %row );
@@ -827,44 +830,84 @@ This is the error event state.
 	The Success Event handler will get a hash in ARG0:
 	{
 		'SQL'		=>	Original SQL inputted
-		'RESULTS'	=>	Array of hash of rows ( array of fetchrow_hashref's )
+		'RESULT'	=>	Array of hash of rows ( array of fetchrow_hashref's )
 		'PLACEHOLDERS'	=>	Original placeholders
 	}
 
-=item C<shutdown>
+=item C<Shutdown>
 
-$_[KERNEL]->post( 'SimpleDBI', 'shutdown' );
+	$_[KERNEL]->post( 'SimpleDBI', 'shutdown' );
 
-This will signal SimpleDBI to start the shutdown procedure.
+	This will signal SimpleDBI to start the shutdown procedure.
 
 	NOTE: This will let all outstanding queries run!
 	SimpleDBI will kill it's session when all the queries have been processed.
 
-=item C<shutdown_NOW>
+	you can also specify an argument:
 
-$_[KERNEL]->post( 'SimpleDBI', 'shutdown_NOW' );
+	$_[KERNEL]->post( 'SimpleDBI', 'shutdown', 'NOW' );
 
 	This will signal SimpleDBI to shutdown.
 
 	NOTE: This will NOT let the outstanding queries finish!
 	Any queries running will be lost!
 
+	Due to the way POE's queue works, this shutdown event will take some time to propagate POE's queue.
+	If you REALLY want to shut down immediately, do this:
+
+	$_[KERNEL]->call( 'SimpleDBI', 'shutdown', 'NOW' );
+
+=back
+
+=head3 Arguments
+
+They are passed in via the $_[KERNEL]->post( ... );
+
+NOTE: Capitalization is very important!
+
+=over 4
+
+=item C<SQL>
+
+This is the actual SQL line you want SimpleDBI to execute.
+You can put in placeholders, this module supports them.
+
+=item C<PLACEHOLDERS>
+
+This is an array of placeholders.
+
+You can skip this if your query does not utilize it.
+
+=item C<EVENT_S>
+
+This is the success event, triggered whenever a query finished successfully.
+
+It will get a hash in ARG0, consult the specific queries on what you will get.
+
+=item C<EVENT_E>
+
+This is the error event, triggered whenever a query gets an error.
+
+It will get a plain string in ARG0, signifying the error.
+
 =back
 
 =head2 SimpleDBI Notes
 
-	This module is very picky about capitalization!
+This module is very picky about capitalization!
 
-	All of the options are uppercase, to avoid confusion.
+All of the options are uppercase, to avoid confusion.
 
-	You can enable debugging mode by doing this:
+You can enable debugging mode by doing this:
+
 	sub POE::Component::SimpleDBI::DEBUG () { 1 }
 	use POE::Component::SimpleDBI;
 
-	Also, this module will try to keep the SubProcess alive.
-	if it dies, it will open it again for a max of 5 retries.
+Also, this module will try to keep the SubProcess alive.
+if it dies, it will open it again for a max of 5 retries.
 
-	You can override this behavior by doing this:
+You can override this behavior by doing this:
+
 	sub POE::Component::SimpleDBI::MAX_RETRIES () { 10 }
 	use POE::Component::SimpleDBI;
 
@@ -877,9 +920,11 @@ Nothing.
 L<DBI>
 
 L<POE>
+
 L<POE::Wheel::Run>
 
 L<POE::Component::DBIAgent>
+
 L<POE::Component::LaDBI>
 
 =head1 AUTHOR

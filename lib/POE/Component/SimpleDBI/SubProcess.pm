@@ -6,7 +6,7 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-our $VERSION = do { my @r = (q$Revision: 1.2 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+our $VERSION = do { my @r = (q$Revision: 1.3 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 # Use Error.pm's try/catch semantics
 use Error qw( :try );
@@ -20,13 +20,19 @@ use DBI;
 # Our Filter object
 my $filter = POE::Filter::Reference->new();
 
+# Autoflush to avoid weirdness
+$|++;
+
 # This is the subroutine that will get executed upon the fork() call by our parent
 sub main {
 	# Get our args
 	my ( $DSN, $USERNAME, $PASSWORD ) = @_;
 
-	# Our variables
-	my ( $dbh );
+	# Database handle
+	my $dbh;
+
+	# Signify an error condition ( from the connection )
+	my $error = undef;
 
 	# Actually make the connection :)
 	try {
@@ -52,14 +58,25 @@ sub main {
 				'TraceLevel'	=>	0,
 			}
 		);
+
+		# Check for undefined-ness
+		if ( ! defined $dbh ) {
+			die "Error Connecting: $DBI::errstr";
+		}
 	} catch Error with {
 		# Get the error
 		my $e = shift;
 
 		# Declare it!
-		print STDERR "ERROR:->:$e\n";
-		return;
+		output( Make_Error( 'DBI', $e ) );
+		$error = 1;
 	};
+
+	# Catch errors!
+	if ( $error ) {
+		# QUIT
+		return;
+	}
 
 	# Okay, now we listen for commands from our parent :)
 	while ( sysread( STDIN, my $buffer = '', 1024 ) ) {
@@ -110,7 +127,7 @@ sub Make_Error {
 	# Get the error, and stringify it in case of Error::Simple objects
 	my $error = shift;
 
-	if ( ref( $error ) eq 'Error::Simple' ) {
+	if ( ref( $error ) && ref( $error ) eq 'Error::Simple' ) {
 		$data->{'ERROR'} = $error->text;
 	} else {
 		$data->{'ERROR'} = $error;
@@ -242,7 +259,9 @@ sub DB_MULTIPLE {
 	}
 
 	# Finally, we clean up this statement handle
-	$sth->finish();
+	if ( defined $sth ) {
+		$sth->finish();
+	}
 
 	# Return the data structure
 	return $output;
@@ -327,7 +346,9 @@ sub DB_SINGLE {
 	}
 
 	# Finally, we clean up this statement handle
-	$sth->finish();
+	if ( defined $sth ) {
+		$sth->finish();
+	}
 
 	# Return the data structure
 	return $output;
@@ -389,7 +410,9 @@ sub DB_DO {
 	}
 
 	# Finally, we clean up this statement handle
-	$sth->finish();
+	if ( defined $sth ) {
+		$sth->finish();
+	}
 
 	# Return the data structure
 	return $output;

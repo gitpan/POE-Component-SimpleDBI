@@ -6,7 +6,7 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-our $VERSION = '1.04';
+our $VERSION = '1.05';
 
 # Use Error.pm's try/catch semantics
 use Error qw( :try );
@@ -184,22 +184,6 @@ sub DB_MULTIPLE {
 	my $sth = undef;
 	my $result = [];
 
-	# Check if this is a non-select statement
-	if ( $data->{'SQL'} !~ /^SELECT/i ) {
-		# User is not a SQL whiz, obviously ;)
-		$output = Make_Error( $data->{'ID'}, "DB_MULTIPLE is for SELECT queries only! ( $data->{'SQL'} )" );
-		return $output;
-	}
-
-	# See if we have a 'LIMIT 1' in the end
-	if ( $data->{'SQL'} =~ /LIMIT\s*\d*$/i ) {
-		# Make sure it is NOT LIMIT 1
-		if ( $data->{'SQL'} =~ /LIMIT\s*1$/i ) {
-			# Not consistent with this interface
-			$output = Make_Error( $data->{'ID'}, "DB_MULTIPLE -> LIMIT 1 is for DB_SINGLE! ( $data->{'SQL'} )" );
-		}
-	}
-
 	# Catch any errors :)
 	try {
 		# Make a new statement handler and prepare the query
@@ -280,13 +264,6 @@ sub DB_SINGLE {
 	my $sth = undef;
 	my $result = undef;
 
-	# Check if this is a non-select statement
-	if ( $data->{'SQL'} !~ /^SELECT/i ) {
-		# User is not a SQL whiz, obviously ;)
-		$output = Make_Error( $data->{'ID'}, "DB_SINGLE is for SELECT queries only! ( $data->{'SQL'} )" );
-		return $output;
-	}
-
 	# See if we have a 'LIMIT 1' in the end
 	if ( $data->{'SQL'} =~ /LIMIT\s*\d*$/i ) {
 		# Make sure it is LIMIT 1
@@ -366,13 +343,6 @@ sub DB_DO {
 	my $output = undef;
 	my $sth = undef;
 	my $rows_affected = undef;
-
-	# Check if this is a non-select statement
-	if ( $data->{'SQL'} =~ /^SELECT/i ) {
-		# User is not a SQL whiz, obviously ;)
-		$output = Make_Error( $data->{'ID'}, "DB_DO is for non-SELECT queries only! ( $data->{'SQL'} )" );
-		return $output;
-	}
 
 	# Catch any errors :)
 	try {

@@ -42,3 +42,7 @@ Revision history for Perl extension POE::Component::SimpleDBI.
 	Peppered the code with *more* DEBUG statements :)
 	Removed a silly croak() and replaced it with a die when it cannot connect to the db
 	Documented the _child events
+
+1.08
+
+	See the POD.

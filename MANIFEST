@@ -5,4 +5,3 @@ README
 lib/POE/Component/SimpleDBI.pm
 lib/POE/Component/SimpleDBI/SubProcess.pm
 t/1.t
-META.yml                                 Module meta-data (added by MakeMaker)

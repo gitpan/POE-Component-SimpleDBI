@@ -6,7 +6,7 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-our $VERSION = '1.07';
+our $VERSION = '1.08';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -751,6 +751,10 @@ POE::Component::SimpleDBI - Perl extension for asynchronous non-blocking DBI cal
 		POE::Component::DBIAgent
 
 =head1 CHANGES
+
+=head2 1.07 -> 1.08
+
+	In the SubProcess, removed the select statement requirement
 
 =head2 1.06 -> 1.07
 

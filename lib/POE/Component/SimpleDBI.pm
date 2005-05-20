@@ -6,7 +6,7 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-our $VERSION = '1.11';
+our $VERSION = '1.12';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -775,31 +775,60 @@ sub Setup_Wheel {
 		die 'POE::Component::SimpleDBI tried ' . MAX_RETRIES . ' times to create a Wheel and is giving up...';
 	}
 
-	# Set up the SubProcess we communicate with
-	$_[HEAP]->{'WHEEL'} = POE::Wheel::Run->new(
-		# What we will run in the separate process
-		'Program'	=>	"$^X -MPOE::Component::SimpleDBI::SubProcess -e 'POE::Component::SimpleDBI::SubProcess::main()'",
+	# Add the windows method
+	if ( $^O eq 'MSWin32' ) {
+		# Set up the SubProcess we communicate with
+		$_[HEAP]->{'WHEEL'} = POE::Wheel::Run->new(
+			# What we will run in the separate process
+			'Program'	=>	\&POE::Component::SimpleDBI::SubProcess::main(),
 
-		# Kill off existing FD's
-		'CloseOnCall'	=>	1,
+			# Kill off existing FD's
+			'CloseOnCall'	=>	0,
 
-		# Redirect errors to our error routine
-		'ErrorEvent'	=>	'ChildError',
+			# Redirect errors to our error routine
+			'ErrorEvent'	=>	'ChildError',
 
-		# Send child died to our child routine
-		'CloseEvent'	=>	'ChildClosed',
+			# Send child died to our child routine
+			'CloseEvent'	=>	'ChildClosed',
 
-		# Send input from child
-		'StdoutEvent'	=>	'Got_STDOUT',
+			# Send input from child
+			'StdoutEvent'	=>	'Got_STDOUT',
 
-		# Send input from child STDERR
-		'StderrEvent'	=>	'Got_STDERR',
+			# Send input from child STDERR
+			'StderrEvent'	=>	'Got_STDERR',
 
-		# Set our filters
-		'StdinFilter'	=>	POE::Filter::Reference->new(),		# Communicate with child via Storable::nfreeze
-		'StdoutFilter'	=>	POE::Filter::Reference->new(),		# Receive input via Storable::nfreeze
-		'StderrFilter'	=>	POE::Filter::Line->new(),		# Plain ol' error lines
-	);
+			# Set our filters
+			'StdinFilter'	=>	POE::Filter::Reference->new(),		# Communicate with child via Storable::nfreeze
+			'StdoutFilter'	=>	POE::Filter::Reference->new(),		# Receive input via Storable::nfreeze
+			'StderrFilter'	=>	POE::Filter::Line->new(),		# Plain ol' error lines
+		);
+	} else {
+		# Set up the SubProcess we communicate with
+		$_[HEAP]->{'WHEEL'} = POE::Wheel::Run->new(
+			# What we will run in the separate process
+			'Program'	=>	"$^X -MPOE::Component::SimpleDBI::SubProcess -e 'POE::Component::SimpleDBI::SubProcess::main()'",
+
+			# Kill off existing FD's
+			'CloseOnCall'	=>	1,
+
+			# Redirect errors to our error routine
+			'ErrorEvent'	=>	'ChildError',
+
+			# Send child died to our child routine
+			'CloseEvent'	=>	'ChildClosed',
+
+			# Send input from child
+			'StdoutEvent'	=>	'Got_STDOUT',
+
+			# Send input from child STDERR
+			'StderrEvent'	=>	'Got_STDERR',
+
+			# Set our filters
+			'StdinFilter'	=>	POE::Filter::Reference->new(),		# Communicate with child via Storable::nfreeze
+			'StdoutFilter'	=>	POE::Filter::Reference->new(),		# Receive input via Storable::nfreeze
+			'StderrFilter'	=>	POE::Filter::Line->new(),		# Plain ol' error lines
+		);
+	}
 
 	# Check for errors
 	if ( ! defined $_[HEAP]->{'WHEEL'} ) {
@@ -1070,7 +1099,13 @@ POE::Component::SimpleDBI - Asynchronous non-blocking DBI calls in POE made simp
 
 =head1 CHANGES
 
-=head2 1.10 -> 1.11
+=head2 1.12
+
+	In the SubProcess, added a binmode() to STDIN and STDERR, for the windows attempt
+	Added code to make SimpleDBI work in Win32 boxes, thanks to the recent Wheel::Run patches!
+	Documentation tweaks as usual
+
+=head2 1.11
 
 	Hannes had a problem:
 		His IRC bot logs events to a database, and sometimes there is no events to log after
@@ -1079,11 +1114,11 @@ POE::Component::SimpleDBI - Asynchronous non-blocking DBI calls in POE made simp
 	The solution was to do a $dbh->ping() before each query, if your DBI driver does it inefficiently, go yell at them!
 	In the event that a reconnect is not possible, an error will be sent to the CONNECT event handler, look at the updated pod.
 
-=head2 1.09 -> 1.10
+=head2 1.10
 
 	Fixed a bug in the DO routine, thanks to Hannes!
 
-=head2 1.08 -> 1.09
+=head2 1.09
 
 	Removed the abstract LIMIT 1 to the SINGLE query
 
@@ -1111,11 +1146,11 @@ POE::Component::SimpleDBI - Asynchronous non-blocking DBI calls in POE made simp
 
 	Added a new command -> Clear_Queue ( clears the queue )
 
-=head2 1.07 -> 1.08
+=head2 1.08
 
 	In the SubProcess, removed the select statement requirement
 
-=head2 1.06 -> 1.07
+=head2 1.07
 
 	In the SubProcess, fixed a silly mistake in DO's execution of placeholders
 
@@ -1127,19 +1162,19 @@ POE::Component::SimpleDBI - Asynchronous non-blocking DBI calls in POE made simp
 
 	Documented the _child events
 
-=head2 1.05 -> 1.06
+=head2 1.06
 
 	Fixed some typos in the POD
 
 	Added the BAGGAGE option
 
-=head2 1.04 -> 1.05
+=head2 1.05
 
 	Fixed some typos in the POD
 
 	Fixed the DEBUG + MAX_RETRIES "Subroutine redefined" foolishness
 
-=head2 1.03 -> 1.04
+=head2 1.04
 
 	Got rid of the EVENT_S and EVENT_E handlers, replaced with a single EVENT handler
 
@@ -1157,7 +1192,7 @@ POE::Component::SimpleDBI - Asynchronous non-blocking DBI calls in POE made simp
 
 	Fixed some typos in the POD
 
-=head2 1.02 -> 1.03
+=head2 1.03
 
 	Increments refcount for querying sessions so they don't go away
 
@@ -1172,6 +1207,10 @@ POE::Component::SimpleDBI - Asynchronous non-blocking DBI calls in POE made simp
 	Renamed the result hash: RESULTS to RESULT for better readability
 
 	SubProcess -> added DBI connect failure handling
+
+=head2 1.02
+
+	Initial release
 
 =head1 DESCRIPTION
 
@@ -1611,13 +1650,15 @@ L<POE::Component::DBIAgent>
 
 L<POE::Component::LaDBI>
 
+L<POE::Component::EasyDBI>
+
 =head1 AUTHOR
 
 Apocalypse E<lt>apocal@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2004 by Apocalypse
+Copyright 2005 by Apocalypse
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

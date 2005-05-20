@@ -6,7 +6,7 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-our $VERSION = '1.08';
+our $VERSION = '1.09';
 
 # Use Error.pm's try/catch semantics
 use Error qw( :try );
@@ -31,6 +31,10 @@ $|++;
 
 # Sysread error hits
 my $sysreaderr = 0;
+
+# Set the binmode stuff
+binmode( STDIN );
+binmode( STDOUT );
 
 # This is the subroutine that will get executed upon the fork() call by our parent
 sub main {
@@ -538,14 +542,6 @@ Nothing.
 =head1 SEE ALSO
 
 L<POE::Component::SimpleDBI>
-
-L<DBI>
-
-L<POE>
-L<POE::Wheel::Run>
-
-L<POE::Component::DBIAgent>
-L<POE::Component::LaDBI>
 
 =head1 AUTHOR
 

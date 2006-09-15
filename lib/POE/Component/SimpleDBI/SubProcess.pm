@@ -6,6 +6,7 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
+# $Revision: 1165 $
 our $VERSION = '1.09';
 
 # Use Error.pm's try/catch semantics
@@ -385,16 +386,9 @@ sub DB_SINGLE {
 			};
 		}
 
-		# Bind the columns
-		try {
-			$sth->bind_columns( \( @$result{ @{ $sth->{'NAME_lc'} } } ) );
-		} catch Error with {
-			die $sth->errstr;
-		};
-
 		# Actually do the query!
 		try {
-			$sth->fetch();
+			$result = $sth->fetchrow_hashref();
 		} catch Error with {
 			die $sth->errstr;
 		};
@@ -549,7 +543,7 @@ Apocalypse E<lt>apocal@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2005 by Apocalypse
+Copyright 2006 by Apocalypse
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

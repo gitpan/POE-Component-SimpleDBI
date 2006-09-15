@@ -6,7 +6,8 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-our $VERSION = '1.12';
+# $Revision: 1165 $
+our $VERSION = '1.13';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -1097,121 +1098,6 @@ POE::Component::SimpleDBI - Asynchronous non-blocking DBI calls in POE made simp
 	If you want more advanced usage, check out:
 		POE::Component::LaDBI
 
-=head1 CHANGES
-
-=head2 1.12
-
-	In the SubProcess, added a binmode() to STDIN and STDERR, for the windows attempt
-	Added code to make SimpleDBI work in Win32 boxes, thanks to the recent Wheel::Run patches!
-	Documentation tweaks as usual
-
-=head2 1.11
-
-	Hannes had a problem:
-		His IRC bot logs events to a database, and sometimes there is no events to log after
-		hours and hours of inactivity ( must be a boring channel haha ), the db server disconnected!
-
-	The solution was to do a $dbh->ping() before each query, if your DBI driver does it inefficiently, go yell at them!
-	In the event that a reconnect is not possible, an error will be sent to the CONNECT event handler, look at the updated pod.
-
-=head2 1.10
-
-	Fixed a bug in the DO routine, thanks to Hannes!
-
-=head2 1.09
-
-	Removed the abstract LIMIT 1 to the SINGLE query
-
-	Removed the silly 5.8.x requirement in Makefile.PL
-
-	Made the SubProcess use less memory by exec()ing itself
-
-	Added the new CONNECT/DISCONNECT commands
-
-	Removed the db connection information from new()
-
-	Minor tweaks here and there to not stupidly call() the queue checker when there is nothing to check :)
-
-	Added the sysreaderr debugging output
-
-	More intelligent SQL/PLACEHOLDERS/BAGGAGE handling
-
-	Made the command arguments more stricter, it will only accept valid arguments, instead of just extracting what it needs
-
-	Made sure all return data have ID/EVENT/SESSION/ACTION in them for easy debugging
-
-	Added the SESSION parameter to all commands for easy redirection
-
-	Updated the POD and generally made it better :)
-
-	Added a new command -> Clear_Queue ( clears the queue )
-
-=head2 1.08
-
-	In the SubProcess, removed the select statement requirement
-
-=head2 1.07
-
-	In the SubProcess, fixed a silly mistake in DO's execution of placeholders
-
-	Cleaned up a few error messages in the SubProcess
-
-	Peppered the code with *more* DEBUG statements :)
-
-	Replaced a croak() with a die() when it couldn't connect to the database
-
-	Documented the _child events
-
-=head2 1.06
-
-	Fixed some typos in the POD
-
-	Added the BAGGAGE option
-
-=head2 1.05
-
-	Fixed some typos in the POD
-
-	Fixed the DEBUG + MAX_RETRIES "Subroutine redefined" foolishness
-
-=head2 1.04
-
-	Got rid of the EVENT_S and EVENT_E handlers, replaced with a single EVENT handler
-
-	Internal changes to get rid of some stuff -> Send_Query / Send_Wheel
-
-	Added the Delete_Query event -> Deletes an query via ID
-
-	Changed the DO/MULTIPLE/SINGLE/QUOTE events to return an ID ( Only usable if call'ed )
-
-	Made sure that the ACTION key is sent back to the EVENT handler every time
-
-	Added some DEBUG stuff :)
-
-	Added the CHANGES section
-
-	Fixed some typos in the POD
-
-=head2 1.03
-
-	Increments refcount for querying sessions so they don't go away
-
-	POD formatting
-
-	Consolidated shutdown and shutdown_NOW into one single event
-
-	General formatting in program
-
-	DB connection error handling
-
-	Renamed the result hash: RESULTS to RESULT for better readability
-
-	SubProcess -> added DBI connect failure handling
-
-=head2 1.02
-
-	Initial release
-
 =head1 DESCRIPTION
 
 This module works its magic by creating a new session with POE, then spawning off a child process
@@ -1500,9 +1386,8 @@ You can skip this if your query does not utilize it.
 
 	$sth = $dbh->prepare_cached( $SQL );
 	$sth->execute( $PLACEHOLDERS );
-	$sth->bind_columns( %result );
-	$sth->fetch();
-	return %result;
+	$result = $sth->fetchrow_hashref;
+	return $result;
 
 	Here's an example on how to trigger this event:
 
@@ -1520,7 +1405,7 @@ You can skip this if your query does not utilize it.
 		'EVENT'		=>	The event the query will respond to
 		'SESSION'	=>	The session the query will respond to
 		'SQL'		=>	Original SQL inputted
-		'RESULT'	=>	Hash of rows - similar to fetchrow_hashref
+		'RESULT'	=>	Hash of columns - similar to fetchrow_hashref ( undef if no rows returned )
 		'PLACEHOLDERS'	=>	Original placeholders ( may not exist if it was not provided )
 		'BAGGAGE'	=>	whatever you set it to ( may not exist if it was not provided )
 	}
@@ -1546,7 +1431,7 @@ You can skip this if your query does not utilize it.
 	while ( $sth->fetch() ) {
 		push( @results, { %row } );
 	}
-	return @results;
+	return \@results;
 
 	Here's an example on how to trigger this event:
 
@@ -1564,7 +1449,7 @@ You can skip this if your query does not utilize it.
 		'EVENT'		=>	The event the query will respond to
 		'SESSION'	=>	The session the query will respond to
 		'SQL'		=>	Original SQL inputted
-		'RESULT'	=>	Array of hash of rows ( array of fetchrow_hashref's )
+		'RESULT'	=>	Array of hash of columns - similar to array of fetchrow_hashref's ( undef if no rows returned )
 		'PLACEHOLDERS'	=>	Original placeholders ( may not exist if it was not provided )
 		'BAGGAGE'	=>	whatever you set it to ( may not exist if it was not provided )
 	}

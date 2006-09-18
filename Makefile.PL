@@ -16,4 +16,12 @@ WriteMakefile(
 			'AUTHOR'	=> 'Apocalypse <APOCAL@cpan.org>',
 		) : ()
 	),
+
+	# Thanks POE!
+	'dist'		=> {
+		'PREOP'		=> (
+			"echo 'license: perl' >> ./META.yml;" .
+			'/bin/cp -f ./META.yml ./$(DISTNAME)-$(VERSION)/META.yml &2>/dev/null'
+		),
+	},
 );

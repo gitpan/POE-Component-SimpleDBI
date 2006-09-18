@@ -6,8 +6,8 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-# $Revision: 1165 $
-our $VERSION = '1.13';
+# $Revision: 1201 $
+our $VERSION = '1.14';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -208,7 +208,7 @@ sub DB_HANDLE {
 		}
 		return;
 	} else {
-		if ( ref( $args{'SESSION'} ) ) {
+		if ( ref $args{'SESSION'} ) {
 			if ( UNIVERSAL::isa( $args{'SESSION'}, 'POE::Session') ) {
 				# Convert it!
 				$args{'SESSION'} = $args{'SESSION'}->ID();
@@ -229,7 +229,7 @@ sub DB_HANDLE {
 		}
 		return;
 	} else {
-		if ( ref( $args{'EVENT'} ) ) {
+		if ( ref $args{'EVENT'} ) {
 			# Same quietness...
 			if ( DEBUG ) {
 				warn "Received a malformed EVENT argument -> State: $_[STATE] Args: " . join( ' / ', %args ) . " Caller: " . $_[CALLER_FILE] . ' -> ' . $_[CALLER_LINE];
@@ -239,7 +239,7 @@ sub DB_HANDLE {
 	}
 
 	# Check for SQL
-	if ( ! exists $args{'SQL'} or ! defined $args{'SQL'} or ref( $args{'SQL'} ) ) {
+	if ( ! exists $args{'SQL'} or ! defined $args{'SQL'} or ref $args{'SQL'} ) {
 		# Extensive debug
 		if ( DEBUG ) {
 			warn 'Did not receive/malformed SQL string!';
@@ -261,7 +261,7 @@ sub DB_HANDLE {
 
 	# Check for placeholders
 	if ( exists $args{'PLACEHOLDERS'} ) {
-		if ( ! ref( $args{'PLACEHOLDERS'} ) or ref( $args{'PLACEHOLDERS'} ) ne 'ARRAY' ) {
+		if ( ! ref $args{'PLACEHOLDERS'} or ref( $args{'PLACEHOLDERS'} ) ne 'ARRAY' ) {
 			# Extensive debug
 			if ( DEBUG ) {
 				warn 'PLACEHOLDERS was not a ref to an ARRAY!';
@@ -369,7 +369,7 @@ sub DB_CONNECT {
 		}
 		return;
 	} else {
-		if ( ref( $args{'SESSION'} ) ) {
+		if ( ref $args{'SESSION'} ) {
 			if ( UNIVERSAL::isa( $args{'SESSION'}, 'POE::Session') ) {
 				# Convert it!
 				$args{'SESSION'} = $args{'SESSION'}->ID();
@@ -390,7 +390,7 @@ sub DB_CONNECT {
 		}
 		return;
 	} else {
-		if ( ref( $args{'EVENT'} ) ) {
+		if ( ref $args{'EVENT'} ) {
 			# Same quietness...
 			if ( DEBUG ) {
 				warn "Received a malformed EVENT argument -> State: CONNECT Args: " . join( ' / ', %args ) . " Caller: " . $_[CALLER_FILE] . ' -> ' . $_[CALLER_LINE];
@@ -402,7 +402,7 @@ sub DB_CONNECT {
 	# Check the 3 things we are interested in
 	foreach my $key ( qw( DSN USERNAME PASSWORD ) ) {
 		# Check for it!
-		if ( ! exists $args{ $key } or ! defined $args{ $key } or ref( $args{ $key } ) ) {
+		if ( ! exists $args{ $key } or ! defined $args{ $key } or ref $args{ $key } ) {
 			# Extensive debug
 			if ( DEBUG ) {
 				warn "Did not receive/malformed $key!";
@@ -503,7 +503,7 @@ sub DB_DISCONNECT {
 		}
 		return;
 	} else {
-		if ( ref( $args{'SESSION'} ) ) {
+		if ( ref $args{'SESSION'} ) {
 			if ( UNIVERSAL::isa( $args{'SESSION'}, 'POE::Session') ) {
 				# Convert it!
 				$args{'SESSION'} = $args{'SESSION'}->ID();
@@ -524,7 +524,7 @@ sub DB_DISCONNECT {
 		}
 		return;
 	} else {
-		if ( ref( $args{'EVENT'} ) ) {
+		if ( ref $args{'EVENT'} ) {
 			# Same quietness...
 			if ( DEBUG ) {
 				warn "Received a malformed EVENT argument -> State: DISCONNECT Args: " . join( ' / ', %args ) . " Caller: " . $_[CALLER_FILE] . ' -> ' . $_[CALLER_LINE];
@@ -893,7 +893,7 @@ sub Got_STDOUT {
 	my $data = $_[ARG0];
 
 	# Validate the argument
-	if ( ! ref( $data ) or ref( $data ) ne 'HASH' ) {
+	if ( ! ref $data or ref( $data ) ne 'HASH' ) {
 		warn "POE::Component::SimpleDBI did not get a hash from the SubProcess ( $data )";
 		return;
 	}
@@ -1527,10 +1527,6 @@ Nothing.
 
 L<DBI>
 
-L<POE>
-
-L<POE::Wheel::Run>
-
 L<POE::Component::DBIAgent>
 
 L<POE::Component::LaDBI>
@@ -1543,7 +1539,7 @@ Apocalypse E<lt>apocal@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2005 by Apocalypse
+Copyright 2006 by Apocalypse
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

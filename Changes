@@ -1,5 +1,10 @@
 Revision history for Perl extension POE::Component::SimpleDBI.
 
+* 1.14
+
+	learned about the difference between ref $self and ref( $self )
+	Kwalitee-related fixes
+
 * 1.13
 
 	Finally use a Changes file - thanks RT #18981

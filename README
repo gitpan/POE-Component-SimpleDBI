@@ -1,5 +1,5 @@
-POE/Component/SimpleDBI version 1.09
-====================================
+POE/Component/SimpleDBI
+=======================
 
 This module simplifies DBI usage in POE's multitasking world.
 
@@ -17,25 +17,7 @@ To install this module type the following:
    make test
    make install
 
-DEPENDENCIES
+MORE INFO
 
-This module requires these other modules and libraries:
-
-	POE > 0.20
-		POE::Session
-		POE::Wheel::Run
-		POE::Filter::Reference
-		POE::Filter::Line
-
-	DBI > 1.30
-
-	Carp
-
-	Error > 0.15
-
-COPYRIGHT AND LICENCE
-
-Copyright 2004 by Apocalypse
-
-This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself.
+	# After installing:
+	perldoc POE::Component::SimpleDBI

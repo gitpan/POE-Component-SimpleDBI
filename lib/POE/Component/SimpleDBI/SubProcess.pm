@@ -6,7 +6,7 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-# $Revision: 1165 $
+# $Revision: 1180 $
 our $VERSION = '1.09';
 
 # Use Error.pm's try/catch semantics
@@ -493,7 +493,7 @@ sub Make_Error {
 	# Get the error, and stringify it in case of Error::Simple objects
 	my $error = shift;
 
-	if ( ref( $error ) && ref( $error ) eq 'Error::Simple' ) {
+	if ( ref $error and ref( $error ) eq 'Error::Simple' ) {
 		$data->{'ERROR'} = $error->text;
 	} else {
 		$data->{'ERROR'} = $error;

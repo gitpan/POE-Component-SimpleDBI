@@ -6,8 +6,8 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-# $Revision: 1201 $
-our $VERSION = '1.14';
+# $Revision: 1216 $
+our $VERSION = '1.15';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -110,6 +110,7 @@ sub new {
 
 			# Are we connected?
 			'CONNECTED'	=>	0,
+			'ACTIVE'	=>	0,
 
 			# The alias we will run under
 			'ALIAS'		=>	$ALIAS,
@@ -423,6 +424,22 @@ sub DB_CONNECT {
 		}
 	}
 
+	# Some sanity
+	if ( exists $args{'NOW'} and $args{'NOW'} and $_[HEAP]->{'CONNECTED'} ) {
+		# Okay, send the error to the Event
+		$_[KERNEL]->post( $args{'SESSION'}, $args{'EVENT'}, {
+			'DSN'		=> $args{'DSN'},
+			'USERNAME'	=> $args{'USERNAME'},
+			'PASSWORD'	=> $args{'PASSWORD'},
+			'ERROR'		=> "Cannot CONNECT NOW when we are already connected!",
+			'ACTION'	=> 'CONNECT',
+			'EVENT'		=> $args{'EVENT'},
+			'SESSION'	=> $args{'SESSION'},
+			}
+		);
+		return;
+	}
+
 	# If we got CLEAR, empty the queue
 	if ( exists $args{'CLEAR'} and $args{'CLEAR'} ) {
 		$_[KERNEL]->call( $_[SESSION], 'Clear_Queue', 'The request queue was cleared via CONNECT' );
@@ -437,17 +454,7 @@ sub DB_CONNECT {
 	# Are we connecting now?
 	if ( exists $args{'NOW'} and $args{'NOW'} ) {
 		# Add this query to the top of the queue
-
-		# Save the old top query
-		my $oldquery = shift( @{ $_[HEAP]->{'QUEUE'} } );
-
-		# Add it to the top!
 		unshift( @{ $_[HEAP]->{'QUEUE'} }, \%args );
-
-		# Put the old one back on top if it was there
-		if ( defined $oldquery ) {
-			unshift( @{ $_[HEAP]->{'QUEUE'} }, $oldquery );
-		}
 	} else {
 		# Add this to the bottom of the queue
 		push( @{ $_[HEAP]->{'QUEUE'} }, \%args );
@@ -459,8 +466,8 @@ sub DB_CONNECT {
 		$_[KERNEL]->call( $_[SESSION], 'Setup_Wheel' );
 	}
 
-	# Check if the subprocess is not active + something in the queue
-	if ( ! $_[HEAP]->{'ACTIVE'} and scalar( @{ $_[HEAP]->{'QUEUE'} } ) > 0 ) {
+	# Check if the subprocess is not active
+	if ( ! $_[HEAP]->{'ACTIVE'} ) {
 		# Send the query!
 		$_[KERNEL]->call( $_[SESSION], 'Check_Queue' );
 	}
@@ -533,6 +540,19 @@ sub DB_DISCONNECT {
 		}
 	}
 
+	# Some sanity
+	if ( exists $args{'NOW'} and $args{'NOW'} and ! $_[HEAP]->{'CONNECTED'} ) {
+		# Okay, send the error to the Event
+		$_[KERNEL]->post( $args{'SESSION'}, $args{'EVENT'}, {
+			'ERROR'		=> "Cannot DISCONNECT NOW when we are already disconnected!",
+			'ACTION'	=> 'DISCONNECT',
+			'EVENT'		=> $args{'EVENT'},
+			'SESSION'	=> $args{'SESSION'},
+			}
+		);
+		return;
+	}
+
 	# If we got CLEAR, empty the queue
 	if ( exists $args{'CLEAR'} and $args{'CLEAR'} ) {
 		$_[KERNEL]->call( $_[SESSION], 'Clear_Queue', 'The request queue was cleared via DISCONNECT' );
@@ -548,23 +568,31 @@ sub DB_DISCONNECT {
 	if ( exists $args{'NOW'} and $args{'NOW'} ) {
 		# Add this query to the top of the queue
 
-		# Save the old top query
-		my $oldquery = shift( @{ $_[HEAP]->{'QUEUE'} } );
+		# Do we need to save the running query?
+		if ( $_[HEAP]->{'ACTIVE'} ) {
+			# Save the old top query
+			my $oldquery = shift( @{ $_[HEAP]->{'QUEUE'} } );
 
-		# Add it to the top!
-		unshift( @{ $_[HEAP]->{'QUEUE'} }, \%args );
+			# Add it to the top!
+			unshift( @{ $_[HEAP]->{'QUEUE'} }, \%args );
 
-		# Put the old one back on top if it was there
-		if ( defined $oldquery ) {
-			unshift( @{ $_[HEAP]->{'QUEUE'} }, $oldquery );
+			# Put the old one back on top if it was there
+			if ( defined $oldquery ) {
+				unshift( @{ $_[HEAP]->{'QUEUE'} }, $oldquery );
+			} else {
+				die "Internal error - ACTIVE with no query!";
+			}
+		} else {
+			# Just shove it on top
+			unshift( @{ $_[HEAP]->{'QUEUE'} }, \%args );
 		}
 	} else {
 		# Add this to the bottom of the queue
 		push( @{ $_[HEAP]->{'QUEUE'} }, \%args );
 	}
 
-	# Check if the subprocess is not active + something in the queue
-	if ( ! $_[HEAP]->{'ACTIVE'} and scalar( @{ $_[HEAP]->{'QUEUE'} } ) > 0 ) {
+	# Check if the subprocess is not active
+	if ( ! $_[HEAP]->{'ACTIVE'} ) {
 		# Send the query!
 		$_[KERNEL]->call( $_[SESSION], 'Check_Queue' );
 	}

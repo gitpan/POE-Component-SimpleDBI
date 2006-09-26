@@ -1,5 +1,10 @@
 Revision history for Perl extension POE::Component::SimpleDBI.
 
+* 1.15
+
+	Thanks to Fred Castellano, who stumbled on a DEADLOCK bug, fixed!
+	Added sanity tests to CONNECT/DISCONNECT
+
 * 1.14
 
 	learned about the difference between ref $self and ref( $self )

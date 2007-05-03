@@ -7,7 +7,7 @@ use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
 # $Revision: 1216 $
-our $VERSION = '1.15';
+our $VERSION = '1.16';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -806,6 +806,9 @@ sub Setup_Wheel {
 
 	# Add the windows method
 	if ( $^O eq 'MSWin32' ) {
+		# Thanks RT #23851
+		require POE::Component::SimpleDBI::SubProcess;
+
 		# Set up the SubProcess we communicate with
 		$_[HEAP]->{'WHEEL'} = POE::Wheel::Run->new(
 			# What we will run in the separate process
@@ -1408,7 +1411,7 @@ You can skip this if your query does not utilize it.
 		PLACEHOLDERS	->	Any placeholders ( if needed )
 		BAGGAGE		->	Any extra data to keep associated with this query ( SimpleDBI will not touch it )
 
-	Keep in mind: the column names are all lowercased automatically!
+	XXX Beware! I incorrectly stated that this returns lowercase rows, this is not true! XXX
 
 	Internally, it does this:
 
@@ -1442,7 +1445,7 @@ You can skip this if your query does not utilize it.
 
 	This query is specialized for those queries where you will get more than 1 result back.
 
-	Keep in mind: the column names are all lowercased automatically!
+	XXX Keep in mind: the column names are all lowercased automatically! XXX
 
 	Accepted arguments:
 		SESSION		->	The session to send the results
@@ -1455,9 +1458,9 @@ You can skip this if your query does not utilize it.
 
 	$sth = $dbh->prepare_cached( $SQL );
 	$sth->execute( $PLACEHOLDERS );
-	$sth->bind_columns( %row );
+	$sth->bind_columns( \( @$newdata{ @{ $sth->{'NAME_lc'} } } ) );
 	while ( $sth->fetch() ) {
-		push( @results, { %row } );
+		push( @results, { @$newdata } );
 	}
 	return \@results;
 
@@ -1567,7 +1570,7 @@ Apocalypse E<lt>apocal@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2006 by Apocalypse
+Copyright 2007 by Apocalypse
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

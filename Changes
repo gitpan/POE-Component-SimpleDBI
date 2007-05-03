@@ -1,5 +1,15 @@
 Revision history for Perl extension POE::Component::SimpleDBI.
 
+* 1.16
+
+	Noticed a glaring documentation bug
+		- SINGLE queries return mixedCaps rows ( not lowercase! )
+		- MULTIPLE queries return lowercase rows
+
+	This makes me *VERY* tempted to fix SINGLE to return lowercase, is this a good idea? Let me know!
+
+	Fixed SimpleDBI failure on Win32 - thanks RT #23851
+
 * 1.15
 
 	Thanks to Fred Castellano, who stumbled on a DEADLOCK bug, fixed!

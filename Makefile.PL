@@ -14,14 +14,7 @@ WriteMakefile(
 		(
 			'ABSTRACT_FROM'	=> 'lib/POE/Component/SimpleDBI.pm', # retrieve abstract from module
 			'AUTHOR'	=> 'Apocalypse <APOCAL@cpan.org>',
+			'LICENSE'	=> 'perl',
 		) : ()
 	),
-
-	# Thanks POE!
-	'dist'		=> {
-		'PREOP'		=> (
-			"echo 'license: perl' >> ./META.yml;" .
-			'/bin/cp -f ./META.yml ./$(DISTNAME)-$(VERSION)/META.yml &2>/dev/null'
-		),
-	},
 );

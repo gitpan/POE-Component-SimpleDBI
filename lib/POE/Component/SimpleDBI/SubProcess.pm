@@ -6,8 +6,8 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-# $Revision: 1180 $
-our $VERSION = '1.09';
+# $Revision: 1226 $
+our $VERSION = '1.10';
 
 # Use Error.pm's try/catch semantics
 use Error qw( :try );
@@ -425,6 +425,7 @@ sub DB_DO {
 	my $output = undef;
 	my $sth = undef;
 	my $rows_affected = undef;
+	my $last_id = undef;
 
 	# Check if we are connected
 	if ( ! defined $DB or ! $DB->ping() ) {
@@ -453,6 +454,9 @@ sub DB_DO {
 				} else {
 					$rows_affected = $sth->execute();
 				}
+
+				# Get the last insert id ( make this portable! )
+                                $last_id = $DB->last_insert_id( undef, undef, undef, undef );
 			} catch Error with {
 				die $sth->errstr;
 			};
@@ -470,6 +474,7 @@ sub DB_DO {
 		$output = {};
 		$output->{'DATA'} = $rows_affected;
 		$output->{'ID'} = $data->{'ID'};
+		$output->{'INSERTID'} = $last_id;
 	} elsif ( ! defined $rows_affected && ! defined $output ) {
 		# Internal error...
 		die 'Internal Error in DB_DO';
@@ -543,7 +548,7 @@ Apocalypse E<lt>apocal@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2006 by Apocalypse
+Copyright 2007 by Apocalypse
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

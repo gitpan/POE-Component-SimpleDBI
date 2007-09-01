@@ -6,8 +6,8 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-# $Revision: 1216 $
-our $VERSION = '1.16';
+# $Revision: 1226 $
+our $VERSION = '1.17';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -997,6 +997,9 @@ sub Got_STDOUT {
 		$ret->{'ERROR'} = $data->{'ERROR'};
 	} else {
 		$ret->{'RESULT'} = $data->{'DATA'};
+		if ( defined $data->{'INSERTID'} ) {
+			$ret->{'INSERTID'} = $data->{'INSERTID'};
+		}
 	}
 
 	# Add the extra fields
@@ -1398,6 +1401,7 @@ You can skip this if your query does not utilize it.
 		'RESULT'	=>	Scalar value of rows affected
 		'PLACEHOLDERS'	=>	Original placeholders ( may not exist if it was not provided )
 		'BAGGAGE'	=>	whatever you set it to ( may not exist if it was not provided )
+		'INSERTID'	=>	The insert ID - using $dbh->last_insert_id( undef, undef, undef, undef ) [ defaults to undef ]
 	}
 
 =head3 C<SINGLE>

@@ -6,8 +6,8 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-# $Revision: 1226 $
-our $VERSION = '1.17';
+# $Revision: 1238 $
+our $VERSION = '1.18';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants

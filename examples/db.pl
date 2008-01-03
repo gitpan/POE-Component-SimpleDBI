@@ -19,7 +19,7 @@ POE::Session->create(
 			# Execute a query and return number of rows affected
 			$_[KERNEL]->post( 'SimpleDBI', 'DO',
 				'SQL'		=>	'DELETE FROM FooTable WHERE ID = ?',
-				'PLACEHOLDERS'	=>	[ qw( 38 ) ],
+				'PLACEHOLDERS'	=>	[ 38 ],
 				'EVENT'		=>	'deleted_handler',
 			);
 
@@ -33,8 +33,9 @@ POE::Session->create(
 			# We want many rows of information + get the query ID so we can delete it later
 			my $id = $_[KERNEL]->call( 'SimpleDBI', 'MULTIPLE',
 				'SQL'		=>	'SELECT foo, baz FROM FooTable2 WHERE id = ?',
-				'PLACEHOLDERS'	=>	[ qw( 53 ) ],
+				'PLACEHOLDERS'	=>	[ 53 ],
 				'EVENT'		=>	'multiple_handler',
+				'PREPARE_CACHED'=>	0,
 			);
 
 			# Quote something and send it to another session

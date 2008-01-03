@@ -6,8 +6,8 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-# $Revision: 1238 $
-our $VERSION = '1.18';
+# $Revision: 1243 $
+our $VERSION = '1.19';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -37,11 +37,8 @@ $|++;
 
 # Set things in motion!
 sub new {
-	# Get the OOP's type
-	my $type = shift;
-
-	# Our own options
-	my $ALIAS = shift;
+	# Get our arguments
+	my( $type, $ALIAS, $PREPARE_CACHED ) = @_;
 
 	# Get the session alias
 	if ( ! defined $ALIAS ) {
@@ -52,6 +49,22 @@ sub new {
 
 		# Set the default
 		$ALIAS = 'SimpleDBI';
+	}
+
+	# Should we disable prepare_cached?
+	if ( ! defined $PREPARE_CACHED ) {
+		# Debugging info...
+		if ( DEBUG ) {
+			warn 'Setting PREPARE_CACHED = 1 by default';
+		}
+
+		$PREPARE_CACHED = 1;
+	} else {
+		if ( $PREPARE_CACHED ) {
+			$PREPARE_CACHED = 1;
+		} else {
+			$PREPARE_CACHED = 0;
+		}
 	}
 
 	# Create a new session for ourself
@@ -114,6 +127,9 @@ sub new {
 
 			# The alias we will run under
 			'ALIAS'		=>	$ALIAS,
+
+			# Cache sql statements?
+			'PREPARE_CACHED'=>	$PREPARE_CACHED,
 		},
 	) or die 'Unable to create a new session!';
 
@@ -187,7 +203,7 @@ sub DB_HANDLE {
 
 	# Check for unknown args
 	foreach my $key ( keys %args ) {
-		if ( $key !~ /^(?:SQL|PLACEHOLDERS|BAGGAGE|EVENT|SESSION)$/ ) {
+		if ( $key !~ /^(?:SQL|PLACEHOLDERS|BAGGAGE|EVENT|SESSION|PREPARE_CACHED)$/ ) {
 			if ( DEBUG ) {
 				warn "Unknown argument to $_[STATE] -> $key";
 			}
@@ -281,6 +297,18 @@ sub DB_HANDLE {
 			);
 			return;
 		}
+	}
+
+	# check for PREPARE_CACHED
+	if ( exists $args{'PREPARE_CACHED'} ) {
+		if ( $args{'PREPARE_CACHED'} ) {
+			$args{'PREPARE_CACHED'} = 1;
+		} else {
+			$args{'PREPARE_CACHED'} = 0;
+		}
+	} else {
+		# What does our global setting say?
+		$args{'PREPARE_CACHED'} = $_[HEAP]->{'PREPARE_CACHED'};
 	}
 
 	# Check if we have shutdown or not
@@ -711,6 +739,8 @@ sub Check_Queue {
 				if ( exists $_[HEAP]->{'QUEUE'}->[0]->{'PLACEHOLDERS'} ) {
 					$queue{'PLACEHOLDERS'} = $_[HEAP]->{'QUEUE'}->[0]->{'PLACEHOLDERS'};
 				}
+
+				$queue{'PREPARE_CACHED'} = $_[HEAP]->{'QUEUE'}->[0]->{'PREPARE_CACHED'};
 			}
 
 			# Set the child to 'active'
@@ -1085,10 +1115,12 @@ POE::Component::SimpleDBI - Asynchronous non-blocking DBI calls in POE made simp
 				);
 
 				# We want many rows of information + get the query ID so we can delete it later
+				# Furthermore, disable prepare_cached on this query
 				my $id = $_[KERNEL]->call( 'SimpleDBI', 'MULTIPLE',
 					'SQL'		=>	'SELECT foo, baz FROM FooTable2 WHERE id = ?',
 					'PLACEHOLDERS'	=>	[ qw( 53 ) ],
 					'EVENT'		=>	'multiple_handler',
+					'PREPARE_CACHED'=>	0,
 				);
 
 				# Quote something and send it to another session
@@ -1160,7 +1192,21 @@ This method will die on error or return success.
 NOTE: The act of starting/stopping SimpleDBI fires off _child events, read
 the POE documentation on what to do with them :)
 
-This constructor accepts only 1 argument: the alias. The default is "SimpleDBI".
+This constructor accepts only 2 arguments.
+
+=head3 Alias
+
+This sets the session alias in POE.
+
+The default is "SimpleDBI".
+
+=head3 PREPARE_CACHED
+
+This sets the global PREPARE_CACHED setting. This is a boolean value.
+
+	POE::Component::SimpleDBI->new( 'ALIAS', 0 );
+
+The default is enabled.
 
 =head2 Commands
 
@@ -1221,6 +1267,18 @@ The baggage will be kept by SimpleDBI and returned to the Event handler intact.
 This is good for storing data associated with a query like a client object, etc.
 
 You can skip this if your query does not utilize it.
+
+=item C<PREPARE_CACHED>
+
+This was added recently, to override SimpleDBI's default behavior of using the
+$dbh->prepare_cached() function. Setting this to false will use $dbh->prepare() instead.
+
+Some users reported problems with PostgreSQL. After investigation, this turned out to be
+some bizarre OID caching issues when the table was updated while the connection is alive.
+The quick work-around is to reconnect to the database, but this was not a "sane" solution.
+
+This is a simple boolean value, and if this argument does not exist, SimpleDBI will
+use the global setting when calling new().
 
 =back
 
@@ -1375,6 +1433,7 @@ You can skip this if your query does not utilize it.
 		SQL		->	The string to be quoted
 		PLACEHOLDERS	->	Any placeholders ( if needed )
 		BAGGAGE		->	Any extra data to keep associated with this query ( SimpleDBI will not touch it )
+		PREPARE_CACHED	->	Boolean value ( if needed )
 
 	Internally, it does this:
 
@@ -1386,7 +1445,7 @@ You can skip this if your query does not utilize it.
 
 	$_[KERNEL]->post( 'SimpleDBI', 'DO',
 		SQL => 'DELETE FROM FooTable WHERE ID = ?',
-		PLACEHOLDERS => [ qw( 38 ) ],
+		PLACEHOLDERS => [ 38 ],
 		EVENT => 'deleted_handler',
 	);
 
@@ -1414,6 +1473,7 @@ You can skip this if your query does not utilize it.
 		SQL		->	The string to be quoted
 		PLACEHOLDERS	->	Any placeholders ( if needed )
 		BAGGAGE		->	Any extra data to keep associated with this query ( SimpleDBI will not touch it )
+		PREPARE_CACHED	->	Boolean value ( if needed )
 
 	XXX Beware! I incorrectly stated that this returns lowercase rows, this is not true! XXX
 
@@ -1457,6 +1517,7 @@ You can skip this if your query does not utilize it.
 		SQL		->	The string to be quoted
 		PLACEHOLDERS	->	Any placeholders ( if needed )
 		BAGGAGE		->	Any extra data to keep associated with this query ( SimpleDBI will not touch it )
+		PREPARE_CACHED	->	Boolean value ( if needed )
 
 	Internally, it does this:
 
@@ -1473,7 +1534,8 @@ You can skip this if your query does not utilize it.
 	$_[KERNEL]->post( 'SimpleDBI', 'MULTIPLE',
 		SQL => 'SELECT foo, baz FROM FooTable2 WHERE id = ?',
 		EVENT => 'multiple_handler',
-		PLACEHOLDERS => [ qw( 53 ) ],
+		PLACEHOLDERS => [ 53 ],
+		PREPARE_CACHED => 0,
 	);
 
 	The Event handler will get a hash in ARG0:
@@ -1574,7 +1636,7 @@ Apocalypse E<lt>apocal@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007 by Apocalypse
+Copyright 2008 by Apocalypse
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

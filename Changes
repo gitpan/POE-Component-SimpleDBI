@@ -1,5 +1,9 @@
 Revision history for Perl extension POE::Component::SimpleDBI.
 
+* 1.19
+
+	Added the PREPARE_CACHED argument to control caching
+
 * 1.18
 
 	Ignore the DBI error for last_insert_id and default to undef

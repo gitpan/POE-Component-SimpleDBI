@@ -5,10 +5,12 @@ WriteMakefile(
 	'NAME'		=> 'POE::Component::SimpleDBI',
 	'VERSION_FROM'	=> 'lib/POE/Component/SimpleDBI.pm', # finds $VERSION
 	'PREREQ_PM'	=> {
-		'POE'	=>	'0.20',
-		'DBI'	=>	'1.30',
-		'Error'	=>	'0.15',
-		'Carp'	=>	'0',
+		'POE'		=>	'0.20',
+		'DBI'		=>	'1.30',
+		'Error'		=>	'0.15',
+		'Carp'		=>	'0',
+		'Test::More'	=>	'0',
+		'Test::Pod'	=>	'0',
 	},
 	(	$] >= 5.005 ?		# Add new keywords
 		(

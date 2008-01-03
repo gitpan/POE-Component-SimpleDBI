@@ -6,8 +6,8 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-# $Revision: 1238 $
-our $VERSION = '1.11';
+# $Revision: 1243 $
+our $VERSION = '1.12';
 
 # Use Error.pm's try/catch semantics
 use Error qw( :try );
@@ -48,6 +48,7 @@ sub main {
 		# $d->{'ACTION'}	= SCALAR	->	WHAT WE SHOULD DO
 		# $d->{'SQL'}		= SCALAR	->	THE ACTUAL SQL
 		# $d->{'PLACEHOLDERS'}	= ARRAY		->	PLACEHOLDERS WE WILL USE
+		# $d->{'PREPARE_CACHED'}= BOOLEAN	->	USE CACHED QUERIES?
 		# $d->{'ID'}		= SCALAR	->	THE QUERY ID ( FOR PARENT TO KEEP TRACK OF WHAT IS WHAT )
 
 		# $d->{'DSN'}		= SCALAR	->	DSN for CONNECT
@@ -275,8 +276,11 @@ sub DB_MULTIPLE {
 	# Catch any errors :)
 	try {
 		# Make a new statement handler and prepare the query
-		# We use the prepare_cached method in hopes of hitting a cached one...
-		$sth = $DB->prepare_cached( $data->{'SQL'} );
+		if ( $data->{'PREPARE_CACHED'} ) {
+			$sth = $DB->prepare_cached( $data->{'SQL'} );
+		} else {
+			$sth = $DB->prepare( $data->{'SQL'} );
+		}
 
 		# Check for undef'ness
 		if ( ! defined $sth ) {
@@ -366,8 +370,11 @@ sub DB_SINGLE {
 	# Catch any errors :)
 	try {
 		# Make a new statement handler and prepare the query
-		# We use the prepare_cached method in hopes of hitting a cached one...
-		$sth = $DB->prepare_cached( $data->{'SQL'} );
+		if ( $data->{'PREPARE_CACHED'} ) {
+			$sth = $DB->prepare_cached( $data->{'SQL'} );
+		} else {
+			$sth = $DB->prepare( $data->{'SQL'} );
+		}
 
 		# Check for undef'ness
 		if ( ! defined $sth ) {
@@ -439,8 +446,11 @@ sub DB_DO {
 	# Catch any errors :)
 	try {
 		# Make a new statement handler and prepare the query
-		# We use the prepare_cached method in hopes of hitting a cached one...
-		$sth = $DB->prepare_cached( $data->{'SQL'} );
+		if ( $data->{'PREPARE_CACHED'} ) {
+			$sth = $DB->prepare_cached( $data->{'SQL'} );
+		} else {
+			$sth = $DB->prepare( $data->{'SQL'} );
+		}
 
 		# Check for undef'ness
 		if ( ! defined $sth ) {
@@ -552,7 +562,7 @@ Apocalypse E<lt>apocal@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2007 by Apocalypse
+Copyright 2008 by Apocalypse
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

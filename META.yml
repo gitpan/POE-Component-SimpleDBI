@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                POE-Component-SimpleDBI
-version:             1.18
+version:             1.19
 abstract:            Asynchronous non-blocking DBI calls in POE made simple
 license:             perl
 generated_by:        ExtUtils::MakeMaker version 6.31
@@ -10,6 +10,8 @@ requires:
     DBI:                           1.30
     Error:                         0.15
     POE:                           0.20
+    Test::More:                    0
+    Test::Pod:                     0
 meta-spec:
     url:     http://module-build.sourceforge.net/META-spec-v1.2.html
     version: 1.2

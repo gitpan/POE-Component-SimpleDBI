@@ -6,8 +6,8 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-# $Revision: 1243 $
-our $VERSION = '1.19';
+# $Revision: 1255 $
+our $VERSION = '1.20';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -203,7 +203,7 @@ sub DB_HANDLE {
 
 	# Check for unknown args
 	foreach my $key ( keys %args ) {
-		if ( $key !~ /^(?:SQL|PLACEHOLDERS|BAGGAGE|EVENT|SESSION|PREPARE_CACHED)$/ ) {
+		if ( $key !~ /^(?:SQL|PLACEHOLDERS|BAGGAGE|EVENT|SESSION|PREPARE_CACHED|INSERT_ID)$/ ) {
 			if ( DEBUG ) {
 				warn "Unknown argument to $_[STATE] -> $key";
 			}
@@ -297,6 +297,18 @@ sub DB_HANDLE {
 			);
 			return;
 		}
+	}
+
+	# check for INSERT_ID
+	if ( exists $args{'INSERT_ID'} ) {
+		if ( $args{'INSERT_ID'} ) {
+			$args{'INSERT_ID'} = 1;
+		} else {
+			$args{'INSERT_ID'} = 0;
+		}
+	} else {
+		# set default
+		$args{'INSERT_ID'} = 1;
 	}
 
 	# check for PREPARE_CACHED
@@ -741,6 +753,10 @@ sub Check_Queue {
 				}
 
 				$queue{'PREPARE_CACHED'} = $_[HEAP]->{'QUEUE'}->[0]->{'PREPARE_CACHED'};
+
+				if ( exists $_[HEAP]->{'QUEUE'}->[0]->{'INSERT_ID'} ) {
+					$queue{'INSERT_ID'} = $_[HEAP]->{'QUEUE'}->[0]->{'INSERT_ID'};
+				}
 			}
 
 			# Set the child to 'active'
@@ -1105,6 +1121,7 @@ POE::Component::SimpleDBI - Asynchronous non-blocking DBI calls in POE made simp
 					'SQL'		=>	'DELETE FROM FooTable WHERE ID = ?',
 					'PLACEHOLDERS'	=>	[ qw( 38 ) ],
 					'EVENT'		=>	'deleted_handler',
+					'INSERT_ID'	=>	0,
 				);
 
 				# Retrieve one row of information
@@ -1280,6 +1297,13 @@ The quick work-around is to reconnect to the database, but this was not a "sane"
 This is a simple boolean value, and if this argument does not exist, SimpleDBI will
 use the global setting when calling new().
 
+=item C<INSERT_ID>
+
+This was added recently, to override SimpleDBI's default behavior of using the
+$dbh->last_insert_id() function. Setting this to false will disable retrieval of this value.
+
+This is a simple boolean value, and if this argument does not exist, SimpleDBI will default to true.
+
 =back
 
 =head3 C<CONNECT>
@@ -1434,6 +1458,7 @@ use the global setting when calling new().
 		PLACEHOLDERS	->	Any placeholders ( if needed )
 		BAGGAGE		->	Any extra data to keep associated with this query ( SimpleDBI will not touch it )
 		PREPARE_CACHED	->	Boolean value ( if needed )
+		INSERT_ID	->	Boolean value ( if needed )
 
 	Internally, it does this:
 

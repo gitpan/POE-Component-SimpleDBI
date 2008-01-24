@@ -6,8 +6,8 @@ use strict qw(subs vars refs);				# Make sure we can't mess up
 use warnings FATAL => 'all';				# Enable warnings to catch errors
 
 # Initialize our version
-# $Revision: 1243 $
-our $VERSION = '1.12';
+# $Revision: 1255 $
+our $VERSION = '1.13';
 
 # Use Error.pm's try/catch semantics
 use Error qw( :try );
@@ -465,12 +465,15 @@ sub DB_DO {
 					$rows_affected = $sth->execute();
 				}
 
-				try {
-					# Get the last insert id ( make this portable! )
-					$last_id = $DB->last_insert_id( undef, undef, undef, undef );
-				} catch Error with {
-					# Ignore this error!
-				};
+				# Should we even attempt this?
+				if ( $data->{'INSERT_ID'} ) {
+					try {
+						# Get the last insert id ( make this portable! )
+						$last_id = $DB->last_insert_id( undef, undef, undef, undef );
+					} catch Error with {
+						# Ignore this error!
+					};
+				}
 			} catch Error with {
 				die $sth->errstr;
 			};

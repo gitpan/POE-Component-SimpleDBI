@@ -1,13 +1,10 @@
 # Declare our package
 package POE::Component::SimpleDBI::SubProcess;
-
-# Standard stuff to catch errors
-use strict qw(subs vars refs);				# Make sure we can't mess up
-use warnings FATAL => 'all';				# Enable warnings to catch errors
+use strict; use warnings;
 
 # Initialize our version
-# $Revision: 1255 $
-our $VERSION = '1.13';
+# $Revision: 1256 $
+our $VERSION = '1.14';
 
 # Use Error.pm's try/catch semantics
 use Error qw( :try );
@@ -77,7 +74,10 @@ sub main {
 				DB_QUOTE( $input );
 			} elsif ( $input->{'ACTION'} eq 'EXIT' ) {
 				# Cleanly disconnect from the DB
-				if ( defined $DB ) { $DB->disconnect() }
+				if ( defined $DB ) {
+					$DB->disconnect();
+					undef $DB;
+				}
 
 				# EXIT!
 				exit 0;
@@ -195,7 +195,7 @@ sub DB_DISCONNECT {
 		# Disconnect from the DB
 		try {
 			$DB->disconnect();
-			$DB = undef;
+			undef $DB;
 
 			# Output success
 			$output = {
@@ -342,6 +342,9 @@ sub DB_MULTIPLE {
 	# Finally, we clean up this statement handle
 	if ( defined $sth ) {
 		$sth->finish();
+
+		# Make sure the object is gone, thanks Sjors!
+		undef $sth;
 	}
 
 	# Return the data structure
@@ -417,6 +420,9 @@ sub DB_SINGLE {
 	# Finally, we clean up this statement handle
 	if ( defined $sth ) {
 		$sth->finish();
+
+		# Make sure the object is gone, thanks Sjors!
+		undef $sth;
 	}
 
 	# Return the data structure
@@ -500,6 +506,9 @@ sub DB_DO {
 	# Finally, we clean up this statement handle
 	if ( defined $sth ) {
 		$sth->finish();
+
+		# Make sure the object is gone, thanks Sjors!
+		undef $sth;
 	}
 
 	# Return the data structure

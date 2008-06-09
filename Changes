@@ -1,5 +1,9 @@
 Revision history for Perl extension POE::Component::SimpleDBI.
 
+* 1.21
+
+	silence warnings when used with DBD::SQLite - thanks to Sjors Gielen for tracking this down!
+
 * 1.20
 
 	Added the INSERT_ID to control $dbh->last_insert_id usage

@@ -6,6 +6,11 @@ WriteMakefile(
 	'VERSION_FROM'	=> 'lib/POE/Component/SimpleDBI.pm', # finds $VERSION
 	'PREREQ_PM'	=> {
 		'POE'		=>	'0.20',
+			'POE::Filter::Line'		=>	0,
+			'POE::Filter::Reference'	=>	0,
+			'POE::Session'			=>	0,
+			'POE::Wheel::Run'		=>	0,
+
 		'DBI'		=>	'1.30',
 		'Error'		=>	'0.15',
 		'Carp'		=>	'0',

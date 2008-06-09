@@ -1,13 +1,10 @@
 # Declare our package
 package POE::Component::SimpleDBI;
-
-# Standard stuff to catch errors
-use strict qw(subs vars refs);				# Make sure we can't mess up
-use warnings FATAL => 'all';				# Enable warnings to catch errors
+use strict; use warnings;
 
 # Initialize our version
-# $Revision: 1255 $
-our $VERSION = '1.20';
+# $Revision: 1256 $
+our $VERSION = '1.21';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants

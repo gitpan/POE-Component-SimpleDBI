@@ -2,9 +2,9 @@
 package POE::Component::SimpleDBI;
 use strict; use warnings;
 
-# Initialize our version
-# $Revision: 1256 $
-our $VERSION = '1.21';
+# Initialize our version $LastChangedRevision: 11 $
+use vars qw( $VERSION );
+$VERSION = '1.22';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -12,9 +12,6 @@ use POE::Session;		# To create our own :)
 use POE::Filter::Reference;	# For communicating with the subprocess
 use POE::Filter::Line;		# For subprocess STDERR messages
 use POE::Wheel::Run;		# For the nitty-gritty details of 'fork'
-
-# Other miscellaneous modules we need
-use Carp;
 
 # Set some constants
 BEGIN {

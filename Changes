@@ -1,5 +1,9 @@
 Revision history for Perl extension POE::Component::SimpleDBI.
 
+* 1.22
+
+	Kwalitee-related fixes
+
 * 1.21
 
 	silence warnings when used with DBD::SQLite - thanks to Sjors Gielen for tracking this down!

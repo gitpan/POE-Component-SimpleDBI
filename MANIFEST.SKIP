@@ -22,3 +22,6 @@
 \#$
 \b\.#
 \.bak$
+
+# our tarballs
+\.tar\.gz$

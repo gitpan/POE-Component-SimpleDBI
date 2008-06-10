@@ -3,8 +3,8 @@ package POE::Component::SimpleDBI::SubProcess;
 use strict; use warnings;
 
 # Initialize our version
-# $Revision: 1256 $
-our $VERSION = '1.14';
+use vars qw( $VERSION );
+$VERSION = (qw$LastChangedRevision: 11 $)[1];
 
 # Use Error.pm's try/catch semantics
 use Error qw( :try );
@@ -16,13 +16,13 @@ use POE::Filter::Reference;
 use DBI;
 
 # Our Filter object
-our $filter = POE::Filter::Reference->new();
+my $filter = POE::Filter::Reference->new();
 
 # Our DBI handle
-our $DB = undef;
+my $DB = undef;
 
 # Save the connect struct for future use
-our $CONN = undef;
+my $CONN = undef;
 
 # Autoflush to avoid weirdness
 $|++;

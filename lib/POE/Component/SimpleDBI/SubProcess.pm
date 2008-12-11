@@ -4,7 +4,7 @@ use strict; use warnings;
 
 # Initialize our version
 use vars qw( $VERSION );
-$VERSION = (qw$LastChangedRevision: 11 $)[1];
+$VERSION = '12';
 
 # Use Error.pm's try/catch semantics
 use Error qw( :try );
@@ -44,6 +44,7 @@ sub main {
 		# INPUT STRUCTURE IS:
 		# $d->{'ACTION'}	= SCALAR	->	WHAT WE SHOULD DO
 		# $d->{'SQL'}		= SCALAR	->	THE ACTUAL SQL
+			# $d->{'SQL'}		= ARRAY		->	THE ACTUAL SQL ( in case of ATOMIC )
 		# $d->{'PLACEHOLDERS'}	= ARRAY		->	PLACEHOLDERS WE WILL USE
 		# $d->{'PREPARE_CACHED'}= BOOLEAN	->	USE CACHED QUERIES?
 		# $d->{'ID'}		= SCALAR	->	THE QUERY ID ( FOR PARENT TO KEEP TRACK OF WHAT IS WHAT )
@@ -72,6 +73,8 @@ sub main {
 				DB_MULTIPLE( $input );
 			} elsif ( $input->{'ACTION'} eq 'QUOTE' ) {
 				DB_QUOTE( $input );
+			} elsif ( $input->{'ACTION'} eq 'ATOMIC' ) {
+				DB_ATOMIC( $input );
 			} elsif ( $input->{'ACTION'} eq 'EXIT' ) {
 				# Cleanly disconnect from the DB
 				if ( defined $DB ) {
@@ -134,12 +137,16 @@ sub DB_CONNECT {
 				{
 					# We do not want users seeing 'spam' on the commandline...
 					'PrintError'	=>	0,
+					'PrintWarn'	=>	0,
 
 					# Automatically raise errors so we can catch them with try/catch
 					'RaiseError'	=>	1,
 
 					# Disable the DBI tracing
 					'TraceLevel'	=>	0,
+
+					# AutoCommit our stuff?
+					'AutoCommit'	=>	$data->{'AUTO_COMMIT'},
 				}
 			);
 
@@ -172,7 +179,7 @@ sub DB_CONNECT {
 		if ( ! exists $output->{'ERROR'} ) {
 			return 1;
 		} else {
-			return undef;
+			return;
 		}
 	}
 }
@@ -289,7 +296,7 @@ sub DB_MULTIPLE {
 			# Execute the query
 			try {
 				# Put placeholders?
-				if ( exists $data->{'PLACEHOLDERS'} ) {
+				if ( exists $data->{'PLACEHOLDERS'} and defined $data->{'PLACEHOLDERS'} ) {
 					$sth->execute( @{ $data->{'PLACEHOLDERS'} } );
 				} else {
 					$sth->execute();
@@ -386,7 +393,7 @@ sub DB_SINGLE {
 			# Execute the query
 			try {
 				# Put placeholders?
-				if ( exists $data->{'PLACEHOLDERS'} ) {
+				if ( exists $data->{'PLACEHOLDERS'} and defined $data->{'PLACEHOLDERS'} ) {
 					$sth->execute( @{ $data->{'PLACEHOLDERS'} } );
 				} else {
 					$sth->execute();
@@ -465,7 +472,7 @@ sub DB_DO {
 			# Execute the query
 			try {
 				# Put placeholders?
-				if ( exists $data->{'PLACEHOLDERS'} ) {
+				if ( exists $data->{'PLACEHOLDERS'} and defined $data->{'PLACEHOLDERS'} ) {
 					$rows_affected = $sth->execute( @{ $data->{'PLACEHOLDERS'} } );
 				} else {
 					$rows_affected = $sth->execute();
@@ -515,6 +522,102 @@ sub DB_DO {
 	output( $output );
 }
 
+# This subroutine runs a 'DO' style query on the db in a transaction
+sub DB_ATOMIC {
+	# Get the input structure
+	my $data = shift;
+
+	# Variables we use
+	my $output = undef;
+	my $sth = undef;
+
+	# Check if we are connected
+	if ( ! defined $DB or ! $DB->ping() ) {
+		# Automatically try to reconnect
+		if ( ! DB_CONNECT( $CONN, 'RECONNECT' ) ) {
+			output( Make_Error( 'GONE', 'Lost connection to the database server.' ) );
+			return;
+		}
+	}
+
+	# Catch any errors :)
+	try {
+		# start the transaction
+		$DB->begin_work if $DB->{'AutoCommit'};
+
+		# process each query
+		for my $idx ( 0 .. $#{ $data->{'SQL'} } ) {
+			if ( $data->{'PREPARE_CACHED'} ) {
+				$sth = $DB->prepare_cached( $data->{'SQL'}->[ $idx ] );
+			} else {
+				$sth = $DB->prepare( $data->{'SQL'}->[ $idx ] );
+			}
+
+			# Check for undef'ness
+			if ( ! defined $sth ) {
+				die "Did not get sth: $DBI::errstr";
+			} else {
+				# actually execute it!
+				try {
+					if ( exists $data->{'PLACEHOLDERS'} and defined $data->{'PLACEHOLDERS'} and defined $data->{'PLACEHOLDERS'}->[ $idx ] ) {
+						$sth->execute( @{ $data->{'PLACEHOLDERS'}->[ $idx ] } );
+					} else {
+						$sth->execute;
+					}
+				} catch Error with {
+					die $sth->errstr;
+				};
+
+				# Finally, we clean up this statement handle
+				$sth->finish();
+
+				# Make sure the object is gone, thanks Sjors!
+				undef $sth;
+			}
+		}
+
+		# done with transaction!
+		$DB->commit;
+	} catch Error with {
+		# Get the error
+		my $e = shift;
+
+		# rollback the changes!
+		try {
+			$DB->rollback;
+		} catch Error with {
+			# Get the error
+			my $error = shift;
+
+			$output = Make_Error( $data->{'ID'}, 'ROLLBACK_FAILURE: ' . $error . ' on query error: ' . $e );
+		};
+
+		# did we rollback fine?
+		if ( ! defined $output ) {
+			$output = Make_Error( $data->{'ID'}, 'COMMIT_FAILURE: ' . $e );
+		}
+	};
+
+	# Finally, we clean up this statement handle
+	if ( defined $sth ) {
+		$sth->finish();
+
+		# Make sure the object is gone, thanks Sjors!
+		undef $sth;
+	}
+
+	# If we got no output, we did it!
+	if ( ! defined $output ) {
+		# Make the data structure
+		$output = {};
+		$output->{'DATA'} = 'SUCCESS';
+		$output->{'ID'} = $data->{'ID'};
+	}
+
+	# Return the data structure
+	output( $output );
+}
+
 # This subroutine makes a generic error structure
 sub Make_Error {
 	# Make the structure
@@ -529,6 +632,20 @@ sub Make_Error {
 	} else {
 		$data->{'ERROR'} = $error;
 	}
+
+	# All done!
+	return $data;
+}
+
+# This subroutine makes a generic DEBUG structure
+sub Make_DEBUG {
+	# Make the structure
+	my $data = {};
+	$data->{'ID'} = 'DEBUG';
+
+	# Get the data, and shove it in the hash
+	my @debug = @_;
+	$data->{'RESULT'} = \@debug;
 
 	# All done!
 	return $data;

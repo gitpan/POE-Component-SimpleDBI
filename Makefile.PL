@@ -9,9 +9,10 @@ WriteMakefile
           'VERSION_FROM' => 'lib/POE/Component/SimpleDBI.pm',
           'PREREQ_PM' => {
                            'POE::Wheel::Run' => 0,
-                           'Error' => '0.15',
                            'POE::Filter::Reference' => 0,
                            'POE::Filter::Line' => 0,
+                           'Test::More' => '0.86',
+                           'Error' => '0.15',
                            'POE::Session' => 0,
                            'POE' => 0,
                            'DBI' => '1.30'

@@ -1,3 +1,7 @@
+NAME
+    POE::Component::SimpleDBI - Asynchronous non-blocking DBI calls in POE
+    made simple
+
 SYNOPSIS
             use POE;
             use POE::Component::SimpleDBI;

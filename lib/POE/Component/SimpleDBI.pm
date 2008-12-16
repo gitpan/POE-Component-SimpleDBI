@@ -4,7 +4,7 @@ use strict; use warnings;
 
 # Initialize our version
 use vars qw( $VERSION );
-$VERSION = '1.23';
+$VERSION = '1.24';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -639,19 +639,10 @@ sub DB_CONNECT {
 	if ( ! exists $args{'AUTO_COMMIT'} ) {
 		$args{'AUTO_COMMIT'} = 1;
 	} else {
-		if ( defined $args{'AUTO_COMMIT'} and ref $args{'AUTO_COMMIT'} ) {
-			# Okay, send the error to the Event
-			$_[KERNEL]->post( $args{'SESSION'}, $args{'EVENT'}, {
-				'DSN'		=> $args{'DSN'},
-				'USERNAME'	=> $args{'USERNAME'},
-				'PASSWORD'	=> $args{'PASSWORD'},
-				'ERROR'		=> "AUTO_COMMIT must be a boolean value, not a reference!",
-				'ACTION'	=> 'CONNECT',
-				'EVENT'		=> $args{'EVENT'},
-				'SESSION'	=> $args{'SESSION'},
-				}
-			);
-			return;
+		if ( $args{'AUTO_COMMIT'} ) {
+			$args{'AUTO_COMMIT'} = 1;
+		} else {
+			$args{'AUTO_COMMIT'} = 0;
 		}
 	}
 

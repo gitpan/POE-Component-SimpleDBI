@@ -1,6 +1,6 @@
 ---
 name: POE-Component-SimpleDBI
-version: 1.23
+version: 1.24
 author:
   - 'Apocalypse <APOCAL@cpan.org>'
 abstract: Asynchronous non-blocking DBI calls in POE made simple
@@ -15,13 +15,12 @@ requires:
   POE::Filter::Reference: 0
   POE::Session: 0
   POE::Wheel::Run: 0
-recommends:
-  Test::More: 0
+  Test::More: 0.86
 dynamic_config: 0
 provides:
   POE::Component::SimpleDBI:
     file: lib/POE/Component/SimpleDBI.pm
-    version: 1.23
+    version: 1.24
   POE::Component::SimpleDBI::SubProcess:
     file: lib/POE/Component/SimpleDBI/SubProcess.pm
     version: 12

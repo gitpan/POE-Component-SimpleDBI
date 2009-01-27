@@ -615,11 +615,41 @@ SEE ALSO
 
     POE::Component::EasyDBI
 
+SUPPORT
+    You can find documentation for this module with the perldoc command.
+
+        perldoc POE::Component::SimpleDBI
+
+  Websites
+    *   AnnoCPAN: Annotated CPAN documentation
+
+        <http://annocpan.org/dist/POE-Component-SimpleDBI>
+
+    *   CPAN Ratings
+
+        <http://cpanratings.perl.org/d/POE-Component-SimpleDBI>
+
+    *   RT: CPAN's request tracker
+
+        <http://rt.cpan.org/NoAuth/Bugs.html?Dist=POE-Component-SimpleDBI>
+
+    *   Search CPAN
+
+        <http://search.cpan.org/dist/POE-Component-SimpleDBI>
+
+  Bugs
+    Please report any bugs or feature requests to
+    "bug-poe-component-simpledbi at rt.cpan.org", or through the web
+    interface at
+    <http://rt.cpan.org/NoAuth/ReportBug.html?Queue=POE-Component-SimpleDBI>
+    . I will be notified, and then you'll automatically be notified of
+    progress on your bug as I make changes.
+
 AUTHOR
     Apocalypse <apocal@cpan.org>
 
 COPYRIGHT AND LICENSE
-    Copyright 2008 by Apocalypse
+    Copyright 2009 by Apocalypse
 
     This library is free software; you can redistribute it and/or modify it
     under the same terms as Perl itself.

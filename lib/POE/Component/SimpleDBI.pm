@@ -4,7 +4,7 @@ use strict; use warnings;
 
 # Initialize our version
 use vars qw( $VERSION );
-$VERSION = '1.26';
+$VERSION = '1.27';
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -835,7 +835,7 @@ sub Clear_Queue {
 	}
 
 	# Go over our queue, and do some stuff
-	foreach my $queue ( shift @{ $_[HEAP]->{'QUEUE'} } ) {
+	foreach my $queue ( @{ $_[HEAP]->{'QUEUE'} } ) {
 		# Skip the special EXIT actions we might have put on the queue
 		if ( $queue->{'ACTION'} eq 'EXIT' ) { next }
 
@@ -1975,6 +1975,10 @@ L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=POE-Component-SimpleDBI>
 
 L<http://search.cpan.org/dist/POE-Component-SimpleDBI>
 
+=item * CPAN::Forum
+
+L<http://www.cpanforum.com/dist/POE-Component-SimpleDBI>
+
 =back
 
 =head2 Bugs
@@ -1982,6 +1986,14 @@ L<http://search.cpan.org/dist/POE-Component-SimpleDBI>
 Please report any bugs or feature requests to C<bug-poe-component-simpledbi at rt.cpan.org>, or through
 the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=POE-Component-SimpleDBI>.  I will be
 notified, and then you'll automatically be notified of progress on your bug as I make changes.
+
+=head2 Code Repository
+
+This code is currently hosted on github.com under the account "apocalypse". Please feel free to browse it
+and pull from it, or whatever. If you want to contribute patches, please send me a diff or prod me to pull
+from your repository :)
+
+L<http://github.com/apocalypse/perl-poe-simpledbi/tree/master>
 
 =head1 AUTHOR
 

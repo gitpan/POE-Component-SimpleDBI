@@ -637,6 +637,10 @@ SUPPORT
 
         <http://search.cpan.org/dist/POE-Component-SimpleDBI>
 
+    *   CPAN::Forum
+
+        <http://www.cpanforum.com/dist/POE-Component-SimpleDBI>
+
   Bugs
     Please report any bugs or feature requests to
     "bug-poe-component-simpledbi at rt.cpan.org", or through the web
@@ -644,6 +648,14 @@ SUPPORT
     <http://rt.cpan.org/NoAuth/ReportBug.html?Queue=POE-Component-SimpleDBI>
     . I will be notified, and then you'll automatically be notified of
     progress on your bug as I make changes.
+
+  Code Repository
+    This code is currently hosted on github.com under the account
+    "apocalypse". Please feel free to browse it and pull from it, or
+    whatever. If you want to contribute patches, please send me a diff or
+    prod me to pull from your repository :)
+
+    <http://github.com/apocalypse/perl-poe-simpledbi/tree/master>
 
 AUTHOR
     Apocalypse <apocal@cpan.org>

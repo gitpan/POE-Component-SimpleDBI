@@ -1,12 +1,23 @@
 ---
-name: POE-Component-SimpleDBI
-version: 1.27
+abstract: 'Asynchronous non-blocking DBI calls in POE made simple'
 author:
   - 'Apocalypse <APOCAL@cpan.org>'
-abstract: Asynchronous non-blocking DBI calls in POE made simple
+configure_requires:
+  Module::Build: 0.36
+dynamic_config: 0
+generated_by: 'Module::Build version 0.3601'
 license: perl
-resources:
-  license: http://dev.perl.org/licenses/
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4
+name: POE-Component-SimpleDBI
+provides:
+  POE::Component::SimpleDBI:
+    file: lib/POE/Component/SimpleDBI.pm
+    version: 1.28
+  POE::Component::SimpleDBI::SubProcess:
+    file: lib/POE/Component/SimpleDBI/SubProcess.pm
+    version: 1.28
 requires:
   DBI: 1.30
   Error: 0.15
@@ -16,15 +27,6 @@ requires:
   POE::Session: 0
   POE::Wheel::Run: 0
   perl: 5.006
-dynamic_config: 0
-provides:
-  POE::Component::SimpleDBI:
-    file: lib/POE/Component/SimpleDBI.pm
-    version: 1.27
-  POE::Component::SimpleDBI::SubProcess:
-    file: lib/POE/Component/SimpleDBI/SubProcess.pm
-    version: 1.27
-generated_by: Module::Build version 0.280801
-meta-spec:
-  url: http://module-build.sourceforge.net/META-spec-v1.2.html
-  version: 1.2
+resources:
+  license: http://dev.perl.org/licenses/
+version: 1.28

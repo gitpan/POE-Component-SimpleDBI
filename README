@@ -216,6 +216,7 @@ DESCRIPTION
                     NOW             ->      Tells SimpleDBI to bypass the queue and connect NOW!
                     CLEAR           ->      Tells SimpleDBI to clear the queue and connect NOW!
                     AUTO_COMMIT     ->      The boolean value we will pass to DBI->connect ( defaults to true )
+                    BAGGAGE         ->      Any extra data to keep associated with this query ( SimpleDBI will not touch it )
 
             NOTE: if the DSN/USERNAME/PASSWORD/SESSION/EVENT does not exist, SimpleDBI assumes you wanted to use
             the old connection and will use the cached values ( if you told it to DISCONNECT ).
@@ -273,6 +274,7 @@ DESCRIPTION
                     EVENT           ->      The event to send the results
                     NOW             ->      Tells SimpleDBI to bypass the queue and disconnect NOW!
                     CLEAR           ->      Tells SimpleDBI to clear the queue and disconnect NOW!
+                    BAGGAGE         ->      Any extra data to keep associated with this query ( SimpleDBI will not touch it )
 
             Here's an example on how to trigger this event:
 
@@ -392,8 +394,6 @@ DESCRIPTION
                     BAGGAGE         ->      Any extra data to keep associated with this query ( SimpleDBI will not touch it )
                     PREPARE_CACHED  ->      Boolean value ( if needed )
 
-            XXX Beware! I incorrectly stated that this returns lowercase rows, this is not true! XXX
-
             Internally, it does this:
 
             $sth = $dbh->prepare_cached( $SQL );
@@ -425,7 +425,7 @@ DESCRIPTION
    "MULTIPLE"
             This query is specialized for those queries where you will get more than 1 result back.
 
-            XXX Keep in mind: the column names are all lowercased automatically! XXX
+            WARNING! The column names are all lowercased automatically! WARNING!
 
             Accepted arguments:
                     SESSION         ->      The session to send the results
@@ -511,7 +511,7 @@ DESCRIPTION
                     if ( $@ ) {
                             return ROLLBACK_FAILURE;
                     } else {
-                            return COMMIT_FAILURE:
+                            return COMMIT_FAILURE;
                     }
             } else {
                     return SUCCESS;
@@ -621,6 +621,10 @@ SUPPORT
         perldoc POE::Component::SimpleDBI
 
   Websites
+    *   Search CPAN
+
+        <http://search.cpan.org/dist/POE-Component-SimpleDBI>
+
     *   AnnoCPAN: Annotated CPAN documentation
 
         <http://annocpan.org/dist/POE-Component-SimpleDBI>
@@ -629,17 +633,34 @@ SUPPORT
 
         <http://cpanratings.perl.org/d/POE-Component-SimpleDBI>
 
-    *   RT: CPAN's request tracker
+    *   CPAN Forum
+
+        <http://cpanforum.com/dist/POE-Component-SimpleDBI>
+
+    *   RT: CPAN's Request Tracker
 
         <http://rt.cpan.org/NoAuth/Bugs.html?Dist=POE-Component-SimpleDBI>
 
-    *   Search CPAN
+    *   CPANTS Kwalitee
 
-        <http://search.cpan.org/dist/POE-Component-SimpleDBI>
+        <http://cpants.perl.org/dist/overview/POE-Component-SimpleDBI>
 
-    *   CPAN::Forum
+    *   CPAN Testers Results
 
-        <http://www.cpanforum.com/dist/POE-Component-SimpleDBI>
+        <http://cpantesters.org/distro/P/POE-Component-SimpleDBI.html>
+
+    *   CPAN Testers Matrix
+
+        <http://matrix.cpantesters.org/?dist=POE-Component-SimpleDBI>
+
+    *   Git Source Code Repository
+
+        This code is currently hosted on github.com under the account
+        "apocalypse". Please feel free to browse it and pull from it, or
+        whatever. If you want to contribute patches, please send me a diff
+        or prod me to pull from your repository :)
+
+        <http://github.com/apocalypse/perl-poe-simpledbi>
 
   Bugs
     Please report any bugs or feature requests to
@@ -649,19 +670,11 @@ SUPPORT
     . I will be notified, and then you'll automatically be notified of
     progress on your bug as I make changes.
 
-  Code Repository
-    This code is currently hosted on github.com under the account
-    "apocalypse". Please feel free to browse it and pull from it, or
-    whatever. If you want to contribute patches, please send me a diff or
-    prod me to pull from your repository :)
-
-    <http://github.com/apocalypse/perl-poe-simpledbi/tree/master>
-
 AUTHOR
     Apocalypse <apocal@cpan.org>
 
 COPYRIGHT AND LICENSE
-    Copyright 2009 by Apocalypse
+    Copyright 2010 by Apocalypse
 
     This library is free software; you can redistribute it and/or modify it
     under the same terms as Perl itself.

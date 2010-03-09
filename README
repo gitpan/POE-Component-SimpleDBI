@@ -216,6 +216,7 @@ DESCRIPTION
                     NOW             ->      Tells SimpleDBI to bypass the queue and connect NOW!
                     CLEAR           ->      Tells SimpleDBI to clear the queue and connect NOW!
                     AUTO_COMMIT     ->      The boolean value we will pass to DBI->connect ( defaults to true )
+                    CACHEDKIDS      ->      Controls the method to cache prepare_cached queries, an arrayref ( defaults to undef )
                     BAGGAGE         ->      Any extra data to keep associated with this query ( SimpleDBI will not touch it )
 
             NOTE: if the DSN/USERNAME/PASSWORD/SESSION/EVENT does not exist, SimpleDBI assumes you wanted to use
@@ -263,6 +264,19 @@ DESCRIPTION
             with an extra key: 'GONE'. In this state SimpleDBI is deadlocked, any new queries will not be processed until a
             CONNECT NOW event is issued! Keep in mind the SINGLE/etc queries WILL NOT receive an error if this happens, the error
             goes straight to the CONNECT handler to keep it simple!
+
+            As of 1.29 SimpleDBI added better control of the prepare_cached cache. Some users reported that the subprocess' memory
+            usage was leaking, and in extreme cases reached several gigs! Upon investigation, it was not SimpleDBI's fault but the
+            way DBI works. What DBI does is cache the statement handle from $dbh->prepare_cached in the $dbh handle. The problem is
+            that it stays around forever in the default implementation! Perusing the DBI docs revealed that it was possible to tie
+            this cache to a custom cache module. So I've added the CACHEDKIDS argument, and setting it to an arrayref will enable the
+            behavior. Look at L<http://search.cpan.org/~timb/DBI-1.609/DBI.pm#prepare_cached> for more information. Here's an example:
+
+                    $_[KERNEL]->post( 'SimpleDBI', 'CONNECT', ..., 'CACHEDKIDS' => [ 'Tie::Cache::LRU' ] );
+
+            The first element in the array is the module to use when tying the cache. Any additional elements are passed to the module's
+            constructor. Please look at the docs for your favorite cache module! If users report success with this, in a future version
+            of SimpleDBI it might become the default behavior. Keep in mind that this will be redundant if PREPARE_CACHED == 0.
 
    "DISCONNECT"
             This tells SimpleDBI to disconnect from the database

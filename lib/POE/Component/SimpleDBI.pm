@@ -1,10 +1,21 @@
-# Declare our package
-package POE::Component::SimpleDBI;
+#
+# This file is part of POE-Component-SimpleDBI
+#
+# This software is copyright (c) 2011 by Apocalypse.
+#
+# This is free software; you can redistribute it and/or modify it under
+# the same terms as the Perl 5 programming language system itself.
+#
 use strict; use warnings;
+package POE::Component::SimpleDBI;
+BEGIN {
+  $POE::Component::SimpleDBI::VERSION = '1.30';
+}
+BEGIN {
+  $POE::Component::SimpleDBI::AUTHORITY = 'cpan:APOCAL';
+}
 
-# Initialize our version
-use vars qw( $VERSION );
-$VERSION = '1.29';
+# ABSTRACT: Asynchronous non-blocking DBI calls in POE made simple
 
 # Import what we need from the POE namespace
 use POE;			# For the constants
@@ -25,7 +36,7 @@ BEGIN {
 # Set things in motion!
 sub new {
 	# Get our arguments
-	my( $type, $ALIAS, $PREPARE_CACHED ) = @_;
+	my( $type, $ALIAS, $PREPARE_CACHED, $SYNCHRO_MODE ) = @_;
 
 	# Get the session alias
 	if ( ! defined $ALIAS ) {
@@ -112,6 +123,9 @@ sub new {
 
 			# Cache sql statements?
 			'PREPARE_CACHED'=>	$PREPARE_CACHED,
+
+			# Synchronous mode?
+			'SYNCHRO'	=>	$SYNCHRO_MODE,
 		},
 	) or die 'Unable to create a new session!';
 
@@ -677,10 +691,15 @@ sub DB_CONNECT {
 		push( @{ $_[HEAP]->{'QUEUE'} }, \%args );
 	}
 
-	# Do we have the wheel running?
-	if ( ! defined $_[HEAP]->{'WHEEL'} ) {
-		# Create the wheel
-		$_[KERNEL]->call( $_[SESSION], 'Setup_Wheel' );
+	# Asynchronous mode.
+	if ( ! defined $_[HEAP]->{'SYNCHRO'} ) {
+		# Do we have the wheel running?
+		if ( ! defined $_[HEAP]->{'WHEEL'} ) {
+			# Create the wheel
+			$_[KERNEL]->call( $_[SESSION], 'Setup_Wheel' );
+		}
+	} else {
+		require POE::Component::SimpleDBI::SubProcess;
 	}
 
 	# Check if the subprocess is not active
@@ -952,7 +971,14 @@ sub Check_Queue {
 			$_[HEAP]->{'ACTIVE'} = 1;
 
 			# Put it in the wheel
-			$_[HEAP]->{'WHEEL'}->put( \%queue );
+			if ( defined $_[HEAP]->{'SYNCHRO'} ) {
+				my $output = (
+					POE::Component::SimpleDBI::SubProcess::process_request(\%queue)
+				);
+				$_[KERNEL]->call($_[SESSION], 'Got_STDOUT', $output) if $output;
+			} else {
+				$_[HEAP]->{'WHEEL'}->put( \%queue );
+			}
 		} else {
 			if ( DEBUG ) {
 				warn 'Check_Queue was called but nothing in the queue!';
@@ -1322,13 +1348,20 @@ sub Got_STDERR {
 }
 
 1;
+
+
 __END__
+=pod
 
 =for stopwords ARG DBI Kwalitee OID PostgreSQL SQL SimpleDBI's com diff github placeholders
 
 =head1 NAME
 
 POE::Component::SimpleDBI - Asynchronous non-blocking DBI calls in POE made simple
+
+=head1 VERSION
+
+  This document describes v1.30 of POE::Component::SimpleDBI - released February 09, 2011 as part of POE-Component-SimpleDBI.
 
 =head1 SYNOPSIS
 
@@ -1403,19 +1436,14 @@ POE::Component::SimpleDBI - Asynchronous non-blocking DBI calls in POE made simp
 		},
 	);
 
-=head1 ABSTRACT
-
-	This module simplifies DBI usage in POE's multitasking world.
-
-	This module is a breeze to use, you'll have DBI calls in your POE program
-	up and running in only a few seconds of setup.
-
-	This module does what XML::Simple does for the XML world.
-
-	If you want more advanced usage, check out:
-		POE::Component::LaDBI
-
 =head1 DESCRIPTION
+
+This module simplifies DBI usage in POE's multitasking world.
+
+This module is a breeze to use, you'll have DBI calls in your POE program
+up and running in only a few seconds of setup.
+
+This module does what XML::Simple does for the XML world.
 
 This module works its magic by creating a new session with POE, then spawning off a child process
 to do the "heavy" lifting. That way, your main POE process can continue servicing other clients.
@@ -1458,6 +1486,15 @@ This sets the global PREPARE_CACHED setting. This is a boolean value.
 	POE::Component::SimpleDBI->new( 'ALIAS', 0 );
 
 The default is enabled.
+
+=head3 SYNCHRONOUS_MODE
+
+This disables the fork() that the subprocess does. Use this only if you are having issues with the backend
+and want to debug the database without dealing with multiprocess issues.
+
+	POE::Component::SimpleDBI->new( 'ALIAS', 1, 1 );
+
+The default is disabled.
 
 =head2 Commands
 
@@ -1609,7 +1646,7 @@ This is a simple boolean value, and if this argument does not exist, SimpleDBI w
 	way DBI works. What DBI does is cache the statement handle from $dbh->prepare_cached in the $dbh handle. The problem is
 	that it stays around forever in the default implementation! Perusing the DBI docs revealed that it was possible to tie
 	this cache to a custom cache module. So I've added the CACHEDKIDS argument, and setting it to an arrayref will enable the
-	behavior. Look at L<http://search.cpan.org/~timb/DBI-1.609/DBI.pm#prepare_cached> for more information. Here's an example:
+	behavior. Look at L<http://search.cpan.org/dist/DBI/DBI.pm#prepare_cached> for more information. Here's an example:
 
 		$_[KERNEL]->post( 'SimpleDBI', 'CONNECT', ..., 'CACHEDKIDS' => [ 'Tie::Cache::LRU' ] );
 
@@ -1966,87 +2003,158 @@ You can override this behavior by doing this:
 	sub POE::Component::SimpleDBI::MAX_RETRIES () { 10 }
 	use POE::Component::SimpleDBI;
 
-=head2 EXPORT
-
-Nothing.
-
 =head1 SEE ALSO
 
-L<DBI>
-
-L<POE::Component::DBIAgent>
-
-L<POE::Component::LaDBI>
-
-L<POE::Component::EasyDBI>
-
-=head1 SUPPORT
-
-You can find documentation for this module with the perldoc command.
-
-    perldoc POE::Component::SimpleDBI
-
-=head2 Websites
+Please see those modules/websites for more information related to this module.
 
 =over 4
 
-=item * Search CPAN
+=item *
+
+L<DBI>
+
+=item *
+
+L<POE::Component::DBIAgent>
+
+=item *
+
+L<POE::Component::LaDBI>
+
+=item *
+
+L<POE::Component::EasyDBI>
+
+=back
+
+=for :stopwords cpan testmatrix url annocpan anno bugtracker rt cpants kwalitee diff irc mailto metadata placeholders
+
+=head1 SUPPORT
+
+=head2 Perldoc
+
+You can find documentation for this module with the perldoc command.
+
+  perldoc POE::Component::SimpleDBI
+
+=head2 Websites
+
+The following websites have more information about this module, and may be of help to you. As always,
+in addition to those websites please use your favorite search engine to discover more resources.
+
+=over 4
+
+=item *
+
+Search CPAN
 
 L<http://search.cpan.org/dist/POE-Component-SimpleDBI>
 
-=item * AnnoCPAN: Annotated CPAN documentation
+=item *
 
-L<http://annocpan.org/dist/POE-Component-SimpleDBI>
-
-=item * CPAN Ratings
-
-L<http://cpanratings.perl.org/d/POE-Component-SimpleDBI>
-
-=item * CPAN Forum
-
-L<http://cpanforum.com/dist/POE-Component-SimpleDBI>
-
-=item * RT: CPAN's Request Tracker
+RT: CPAN's Bug Tracker
 
 L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=POE-Component-SimpleDBI>
 
-=item * CPANTS Kwalitee
+=item *
+
+AnnoCPAN: Annotated CPAN documentation
+
+L<http://annocpan.org/dist/POE-Component-SimpleDBI>
+
+=item *
+
+CPAN Ratings
+
+L<http://cpanratings.perl.org/d/POE-Component-SimpleDBI>
+
+=item *
+
+CPAN Forum
+
+L<http://cpanforum.com/dist/POE-Component-SimpleDBI>
+
+=item *
+
+CPANTS Kwalitee
 
 L<http://cpants.perl.org/dist/overview/POE-Component-SimpleDBI>
 
-=item * CPAN Testers Results
+=item *
+
+CPAN Testers Results
 
 L<http://cpantesters.org/distro/P/POE-Component-SimpleDBI.html>
 
-=item * CPAN Testers Matrix
+=item *
+
+CPAN Testers Matrix
 
 L<http://matrix.cpantesters.org/?dist=POE-Component-SimpleDBI>
 
-=item * Git Source Code Repository
+=back
 
-This code is currently hosted on github.com under the account "apocalypse". Please feel free to browse it
-and pull from it, or whatever. If you want to contribute patches, please send me a diff or prod me to pull
+=head2 Email
+
+You can email the author of this module at C<APOCAL at cpan.org> asking for help with any problems you have.
+
+=head2 Internet Relay Chat
+
+You can get live help by using IRC ( Internet Relay Chat ). If you don't know what IRC is,
+please read this excellent guide: L<http://en.wikipedia.org/wiki/Internet_Relay_Chat>. Please
+be courteous and patient when talking to us, as we might be busy or sleeping! You can join
+those networks/channels and get help:
+
+=over 4
+
+=item *
+
+irc.perl.org
+
+You can connect to the server at 'irc.perl.org' and join this channel: #perl-help then talk to this person for help: Apocalypse.
+
+=item *
+
+irc.freenode.net
+
+You can connect to the server at 'irc.freenode.net' and join this channel: #perl then talk to this person for help: Apocal.
+
+=item *
+
+irc.efnet.org
+
+You can connect to the server at 'irc.efnet.org' and join this channel: #perl then talk to this person for help: Ap0cal.
+
+=back
+
+=head2 Bugs / Feature Requests
+
+Please report any bugs or feature requests by email to C<bug-poe-component-simpledbi at rt.cpan.org>, or through
+the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=POE-Component-SimpleDBI>. You will be automatically notified of any
+progress on the request by the system.
+
+=head2 Source Code
+
+The code is open to the world, and available for you to hack on. Please feel free to browse it and play
+with it, or whatever. If you want to contribute patches, please send me a diff or prod me to pull
 from your repository :)
 
 L<http://github.com/apocalypse/perl-poe-simpledbi>
 
-=back
-
-=head2 Bugs
-
-Please report any bugs or feature requests to C<bug-poe-component-simpledbi at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=POE-Component-SimpleDBI>.  I will be
-notified, and then you'll automatically be notified of progress on your bug as I make changes.
+  git clone git://github.com/apocalypse/perl-poe-simpledbi.git
 
 =head1 AUTHOR
 
-Apocalypse E<lt>apocal@cpan.orgE<gt>
+Apocalypse <APOCAL@cpan.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2010 by Apocalypse
+This software is copyright (c) 2011 by Apocalypse.
 
-This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself.
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
+
+The full text of the license can be found in the LICENSE file included with this distribution.
 
 =cut
+

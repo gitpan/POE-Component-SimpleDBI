@@ -1,19 +1,30 @@
-# Declare our package
-package POE::Component::SimpleDBI::SubProcess;
+#
+# This file is part of POE-Component-SimpleDBI
+#
+# This software is copyright (c) 2011 by Apocalypse.
+#
+# This is free software; you can redistribute it and/or modify it under
+# the same terms as the Perl 5 programming language system itself.
+#
 use strict; use warnings;
+package POE::Component::SimpleDBI::SubProcess;
+BEGIN {
+  $POE::Component::SimpleDBI::SubProcess::VERSION = '1.30';
+}
+BEGIN {
+  $POE::Component::SimpleDBI::SubProcess::AUTHORITY = 'cpan:APOCAL';
+}
 
-# Initialize our version
-use vars qw( $VERSION );
-$VERSION = '1.29';
+# ABSTRACT: Backend of POE::Component::SimpleDBI
 
 # Use Error.pm's try/catch semantics
-use Error qw( :try );
+use Error 0.15 qw( :try );
 
 # We pass in data to POE::Filter::Reference
 use POE::Filter::Reference;
 
 # We run the actual DB connection here
-use DBI;
+use DBI 1.30;
 
 # Our Filter object
 my $filter = POE::Filter::Reference->new();
@@ -58,39 +69,8 @@ sub main {
 
 		# Process each data structure
 		foreach my $input ( @$data ) {
-			# Now, we do the actual work depending on what kind of query it was
-			if ( $input->{'ACTION'} eq 'CONNECT' ) {
-				# Connect!
-				DB_CONNECT( $input );
-			} elsif ( $input->{'ACTION'} eq 'DISCONNECT' ) {
-				# Disconnect!
-				DB_DISCONNECT( $input );
-			} elsif ( $input->{'ACTION'} eq 'DO' ) {
-				# Fire off the SQL and return success/failure + rows affected
-				DB_DO( $input );
-			} elsif ( $input->{'ACTION'} eq 'SINGLE' ) {
-				# Return a single result
-				DB_SINGLE( $input );
-			} elsif ( $input->{'ACTION'} eq 'MULTIPLE' ) {
-				# Get many results, then return them all at the same time
-				DB_MULTIPLE( $input );
-			} elsif ( $input->{'ACTION'} eq 'QUOTE' ) {
-				DB_QUOTE( $input );
-			} elsif ( $input->{'ACTION'} eq 'ATOMIC' ) {
-				DB_ATOMIC( $input );
-			} elsif ( $input->{'ACTION'} eq 'EXIT' ) {
-				# Cleanly disconnect from the DB
-				if ( defined $DB ) {
-					$DB->disconnect();
-					undef $DB;
-				}
-
-				# EXIT!
-				return;
-			} else {
-				# Unrecognized action!
-				output( Make_Error( $input->{'ID'}, 'Unknown action sent from parent' ) );
-			}
+			output( process_request( $input ) );
+			return if $input->{'ACTION'} eq 'EXIT';
 		}
 	}
 
@@ -106,6 +86,45 @@ sub main {
 	}
 
 	return;
+}
+
+sub process_request {
+	my $input = shift;
+
+	# Now, we do the actual work depending on what kind of query it was
+	if ( $input->{'ACTION'} eq 'CONNECT' ) {
+		# Connect!
+		my ($success, $output) = DB_CONNECT($input, 0);
+		return $output;
+	} elsif ( $input->{'ACTION'} eq 'DISCONNECT' ) {
+		# Disconnect!
+		return DB_DISCONNECT( $input );
+	} elsif ( $input->{'ACTION'} eq 'DO' ) {
+		# Fire off the SQL and return success/failure + rows affected
+		return DB_DO( $input );
+	} elsif ( $input->{'ACTION'} eq 'SINGLE' ) {
+		# Return a single result
+		return DB_SINGLE( $input );
+	} elsif ( $input->{'ACTION'} eq 'MULTIPLE' ) {
+		# Get many results, then return them all at the same time
+		return DB_MULTIPLE( $input );
+	} elsif ( $input->{'ACTION'} eq 'QUOTE' ) {
+		return DB_QUOTE( $input );
+	} elsif ( $input->{'ACTION'} eq 'ATOMIC' ) {
+		return DB_ATOMIC( $input );
+	} elsif ( $input->{'ACTION'} eq 'EXIT' ) {
+		# Cleanly disconnect from the DB
+		if ( defined $DB ) {
+			$DB->disconnect();
+			undef $DB;
+		}
+
+		# EXIT!
+		return;
+	}
+
+	# Unrecognized action!
+	return( Make_Error( $input->{'ID'}, 'Unknown action sent from parent' ) );
 }
 
 # Connects to the DB
@@ -189,15 +208,15 @@ sub DB_CONNECT {
 
 	# All done!
 	if ( ! defined $reconn ) {
-		output( $output );
+		return (1, $output);
 	} else {
 		# Reconnect attempt, was it successful?
 		if ( ! exists $output->{'ERROR'} ) {
-			return 1;
+			return (1, $output);
 		}
 	}
 
-	return;
+	return (0, $output);
 }
 
 # Disconnects from the DB
@@ -234,8 +253,7 @@ sub DB_DISCONNECT {
 	}
 
 	# All done!
-	output( $output );
-	return;
+	return $output;
 }
 
 # This subroutine does a DB QUOTE
@@ -250,9 +268,8 @@ sub DB_QUOTE {
 	# Check if we are connected
 	if ( ! defined $DB or ! $DB->ping() ) {
 		# Automatically try to reconnect
-		if ( ! DB_CONNECT( $CONN, 'RECONNECT' ) ) {
-			output( Make_Error( 'GONE', 'Lost connection to the database server.' ) );
-			return;
+		if ( ! ( DB_CONNECT( $CONN, 'RECONNECT' ) )[0] ) {
+			return Make_Error( 'GONE', 'Lost connection to the database server.' );
 		}
 	}
 
@@ -275,8 +292,7 @@ sub DB_QUOTE {
 	}
 
 	# All done!
-	output( $output );
-	return;
+	return $output;
 }
 
 # This subroutine runs a 'SELECT' style query on the db
@@ -292,9 +308,8 @@ sub DB_MULTIPLE {
 	# Check if we are connected
 	if ( ! defined $DB or ! $DB->ping() ) {
 		# Automatically try to reconnect
-		if ( ! DB_CONNECT( $CONN, 'RECONNECT' ) ) {
-			output( Make_Error( 'GONE', 'Lost connection to the database server.' ) );
-			return;
+		if ( ! ( DB_CONNECT( $CONN, 'RECONNECT' ) )[0] ) {
+			return( Make_Error( 'GONE', 'Lost connection to the database server.' ) );
 		}
 	}
 
@@ -373,8 +388,7 @@ sub DB_MULTIPLE {
 	}
 
 	# Return the data structure
-	output( $output );
-	return;
+	return $output;
 }
 
 # This subroutine runs a 'SELECT ... LIMIT 1' style query on the db
@@ -390,9 +404,8 @@ sub DB_SINGLE {
 	# Check if we are connected
 	if ( ! defined $DB or ! $DB->ping() ) {
 		# Automatically try to reconnect
-		if ( ! DB_CONNECT( $CONN, 'RECONNECT' ) ) {
-			output( Make_Error( 'GONE', 'Lost connection to the database server.' ) );
-			return;
+		if ( ! ( DB_CONNECT( $CONN, 'RECONNECT' ) )[0] ) {
+			return Make_Error( 'GONE', 'Lost connection to the database server.' );
 		}
 	}
 
@@ -452,8 +465,7 @@ sub DB_SINGLE {
 	}
 
 	# Return the data structure
-	output( $output );
-	return;
+	return $output;
 }
 
 # This subroutine runs a 'DO' style query on the db
@@ -470,9 +482,8 @@ sub DB_DO {
 	# Check if we are connected
 	if ( ! defined $DB or ! $DB->ping() ) {
 		# Automatically try to reconnect
-		if ( ! DB_CONNECT( $CONN, 'RECONNECT' ) ) {
-			output( Make_Error( 'GONE', 'Lost connection to the database server.' ) );
-			return;
+		if ( ! ( DB_CONNECT( $CONN, 'RECONNECT' ) )[0] ) {
+			return Make_Error( 'GONE', 'Lost connection to the database server.' );
 		}
 	}
 
@@ -539,8 +550,7 @@ sub DB_DO {
 	}
 
 	# Return the data structure
-	output( $output );
-	return;
+	return $output;
 }
 
 # This subroutine runs a 'DO' style query on the db in a transaction
@@ -555,9 +565,8 @@ sub DB_ATOMIC {
 	# Check if we are connected
 	if ( ! defined $DB or ! $DB->ping() ) {
 		# Automatically try to reconnect
-		if ( ! DB_CONNECT( $CONN, 'RECONNECT' ) ) {
-			output( Make_Error( 'GONE', 'Lost connection to the database server.' ) );
-			return;
+		if ( ! ( DB_CONNECT( $CONN, 'RECONNECT' ) )[0] ) {
+			return Make_Error( 'GONE', 'Lost connection to the database server.' );
 		}
 	}
 
@@ -636,8 +645,7 @@ sub DB_ATOMIC {
 	}
 
 	# Return the data structure
-	output( $output );
-	return;
+	return $output;
 }
 
 # This subroutine makes a generic error structure
@@ -687,7 +695,10 @@ sub output {
 }
 
 1;
+
+
 __END__
+=pod
 
 =for stopwords DBI
 
@@ -695,28 +706,39 @@ __END__
 
 POE::Component::SimpleDBI::SubProcess - Backend of POE::Component::SimpleDBI
 
-=head1 ABSTRACT
+=head1 VERSION
+
+  This document describes v1.30 of POE::Component::SimpleDBI::SubProcess - released February 09, 2011 as part of POE-Component-SimpleDBI.
+
+=head1 DESCRIPTION
 
 This module is responsible for implementing the guts of POE::Component::SimpleDBI.
 Namely, the fork/exec and the connection to the DBI.
 
-=head2 EXPORT
-
-Nothing.
-
 =head1 SEE ALSO
+
+Please see those modules/websites for more information related to this module.
+
+=over 4
+
+=item *
 
 L<POE::Component::SimpleDBI>
 
+=back
+
 =head1 AUTHOR
 
-Apocalypse E<lt>apocal@cpan.orgE<gt>
+Apocalypse <APOCAL@cpan.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2010 by Apocalypse
+This software is copyright (c) 2011 by Apocalypse.
 
-This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself.
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
+
+The full text of the license can be found in the LICENSE file included with this distribution.
 
 =cut
+

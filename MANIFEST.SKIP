@@ -1,4 +1,4 @@
-# Added by Dist::Zilla::PluginBundle::Apocalyptic v0.001
+# Added by Dist::Zilla::PluginBundle::Apocalyptic v0.006
 
 # skip Eclipse IDE stuff
 \.includepath$

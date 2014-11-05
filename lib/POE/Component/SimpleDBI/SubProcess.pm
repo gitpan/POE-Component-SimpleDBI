@@ -1,19 +1,15 @@
 #
 # This file is part of POE-Component-SimpleDBI
 #
-# This software is copyright (c) 2011 by Apocalypse.
+# This software is copyright (c) 2014 by Apocalypse.
 #
 # This is free software; you can redistribute it and/or modify it under
 # the same terms as the Perl 5 programming language system itself.
 #
 use strict; use warnings;
 package POE::Component::SimpleDBI::SubProcess;
-BEGIN {
-  $POE::Component::SimpleDBI::SubProcess::VERSION = '1.30';
-}
-BEGIN {
-  $POE::Component::SimpleDBI::SubProcess::AUTHORITY = 'cpan:APOCAL';
-}
+$POE::Component::SimpleDBI::SubProcess::VERSION = '1.31';
+our $AUTHORITY = 'cpan:APOCAL';
 
 # ABSTRACT: Backend of POE::Component::SimpleDBI
 
@@ -30,10 +26,10 @@ use DBI 1.30;
 my $filter = POE::Filter::Reference->new();
 
 # Our DBI handle
-my $DB = undef;
+my $DB;
 
 # Save the connect struct for future use
-my $CONN = undef;
+my $CONN;
 
 # Sysread error hits
 my $sysreaderr = 0;
@@ -94,8 +90,7 @@ sub process_request {
 	# Now, we do the actual work depending on what kind of query it was
 	if ( $input->{'ACTION'} eq 'CONNECT' ) {
 		# Connect!
-		my ($success, $output) = DB_CONNECT($input, 0);
-		return $output;
+		return (DB_CONNECT($input, 0))[1];
 	} elsif ( $input->{'ACTION'} eq 'DISCONNECT' ) {
 		# Disconnect!
 		return DB_DISCONNECT( $input );
@@ -132,11 +127,11 @@ sub DB_CONNECT {
 	# Get the input structure
 	my $data = shift;
 
-	# Our output structure
-	my $output = undef;
-
 	# Are we reconnecting?
 	my $reconn = shift;
+
+	# Our output structure
+	my $output;
 
 	# Are we already connected?
 	if ( defined $DB and $DB->ping() ) {
@@ -225,7 +220,7 @@ sub DB_DISCONNECT {
 	my $data = shift;
 
 	# Our output structure
-	my $output = undef;
+	my $output;
 
 	# Are we already disconnected?
 	if ( ! defined $DB ) {
@@ -262,8 +257,7 @@ sub DB_QUOTE {
 	my $data = shift;
 
 	# The result
-	my $quoted = undef;
-	my $output = undef;
+	my( $quoted, $output );
 
 	# Check if we are connected
 	if ( ! defined $DB or ! $DB->ping() ) {
@@ -301,8 +295,7 @@ sub DB_MULTIPLE {
 	my $data = shift;
 
 	# Variables we use
-	my $output = undef;
-	my $sth = undef;
+	my( $output, $sth );
 	my $result = [];
 
 	# Check if we are connected
@@ -335,7 +328,8 @@ sub DB_MULTIPLE {
 					$sth->execute();
 				}
 			} catch Error with {
-				die $sth->errstr;
+				die $sth->errstr if $sth->errstr;
+				die "NON DBI ERROR : $@";
 			};
 		}
 
@@ -346,7 +340,8 @@ sub DB_MULTIPLE {
 		try {
 			$sth->bind_columns( \( @$newdata{ @{ $sth->{'NAME_lc'} } } ) );
 		} catch Error with {
-			die $sth->errstr;
+			die $sth->errstr if $sth->errstr;
+			die "NON DBI ERROR : $@";
 		};
 
 		# Actually do the query!
@@ -356,7 +351,8 @@ sub DB_MULTIPLE {
 				push( @{ $result }, { %{ $newdata } } );
 			}
 		} catch Error with {
-			die $sth->errstr;
+			die $sth->errstr if $sth->errstr;
+			die "NON DBI ERROR : $@";
 		};
 
 		# Check for any errors that might have terminated the loop early
@@ -397,9 +393,7 @@ sub DB_SINGLE {
 	my $data = shift;
 
 	# Variables we use
-	my $output = undef;
-	my $sth = undef;
-	my $result = undef;
+	my( $output, $sth, $result );
 
 	# Check if we are connected
 	if ( ! defined $DB or ! $DB->ping() ) {
@@ -431,7 +425,8 @@ sub DB_SINGLE {
 					$sth->execute();
 				}
 			} catch Error with {
-				die $sth->errstr;
+				die $sth->errstr if $sth->errstr;
+				die "NON DBI ERROR : $@";
 			};
 		}
 
@@ -439,7 +434,8 @@ sub DB_SINGLE {
 		try {
 			$result = $sth->fetchrow_hashref();
 		} catch Error with {
-			die $sth->errstr;
+			die $sth->errstr if $sth->errstr;
+			die "NON DBI ERROR : $@";
 		};
 	} catch Error with {
 		# Get the error
@@ -474,10 +470,7 @@ sub DB_DO {
 	my $data = shift;
 
 	# Variables we use
-	my $output = undef;
-	my $sth = undef;
-	my $rows_affected = undef;
-	my $last_id = undef;
+	my( $output, $sth, $rows_affected, $last_id );
 
 	# Check if we are connected
 	if ( ! defined $DB or ! $DB->ping() ) {
@@ -519,7 +512,10 @@ sub DB_DO {
 					};
 				}
 			} catch Error with {
-				die $sth->errstr;
+				# If something other than DBI fails, errstr won't be set.
+				# You can get this if, for example, we need a module that hasn't been loaded.
+				die $sth->errstr if $sth->errstr;
+				die "NON DBI ERROR : $@";
 			};
 		}
 	} catch Error with {
@@ -559,8 +555,7 @@ sub DB_ATOMIC {
 	my $data = shift;
 
 	# Variables we use
-	my $output = undef;
-	my $sth = undef;
+	my( $output, $sth );
 
 	# Check if we are connected
 	if ( ! defined $DB or ! $DB->ping() ) {
@@ -696,11 +691,15 @@ sub output {
 
 1;
 
-
 __END__
+
 =pod
 
-=for stopwords DBI
+=encoding UTF-8
+
+=for :stopwords Apocalypse DBI
+
+=for Pod::Coverage *EVERYTHING*
 
 =head1 NAME
 
@@ -708,7 +707,7 @@ POE::Component::SimpleDBI::SubProcess - Backend of POE::Component::SimpleDBI
 
 =head1 VERSION
 
-  This document describes v1.30 of POE::Component::SimpleDBI::SubProcess - released February 09, 2011 as part of POE-Component-SimpleDBI.
+  This document describes v1.31 of POE::Component::SimpleDBI::SubProcess - released November 05, 2014 as part of POE-Component-SimpleDBI.
 
 =head1 DESCRIPTION
 
@@ -723,7 +722,7 @@ Please see those modules/websites for more information related to this module.
 
 =item *
 
-L<POE::Component::SimpleDBI>
+L<POE::Component::SimpleDBI|POE::Component::SimpleDBI>
 
 =back
 
@@ -733,12 +732,33 @@ Apocalypse <APOCAL@cpan.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-This software is copyright (c) 2011 by Apocalypse.
+This software is copyright (c) 2014 by Apocalypse.
 
 This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.
 
-The full text of the license can be found in the LICENSE file included with this distribution.
+The full text of the license can be found in the
+F<LICENSE> file included with this distribution.
+
+=head1 DISCLAIMER OF WARRANTY
+
+THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
+APPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT
+HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM "AS IS" WITHOUT WARRANTY
+OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO,
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM
+IS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF
+ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
+
+IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
+WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MODIFIES AND/OR CONVEYS
+THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES, INCLUDING ANY
+GENERAL, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE
+USE OR INABILITY TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED TO LOSS OF
+DATA OR DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD
+PARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER PROGRAMS),
+EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGES.
 
 =cut
-
